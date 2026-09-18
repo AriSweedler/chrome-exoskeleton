@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-*
+coverage
+*.log
+.DS_Store
+extension.zip
+.worktrees
+/test-results/
+/playwright-report/
+
+# The plugin link farm. Every entry is a symlink made by `bin/exo link`; only
+# the framework's own files in it are tracked.
+/src/plugins/*
+!/src/plugins/index.tsx
+!/src/plugins/README.md
+!/src/plugins/contract.test.ts
+
+# Real-DOM snapshots saved beside a plugin are machine-local iteration fixtures.
+/plugins/**/examples/*
+!/plugins/**/examples/.gitkeep
+/plugins/node_modules
+/plugins/**/test-results/
