@@ -14,7 +14,10 @@ No manifest, no package.json, no central list to edit.
 | something else | any directory listed in `EXO_PLUGIN_DIRS` (colon-separated) | you |
 
 Both are built, tested and linted identically: every tool only ever sees
-`src/plugins/<name>`. A plugin name must be unique across roots.
+`src/plugins/<name>`. A plugin name must be unique across roots. A root
+outside this repo gets a `node_modules` symlink and an ESM `package.json`
+marker from `exo link` (editors and Playwright need them; they are not
+plugins).
 
 Scaffold one:
 

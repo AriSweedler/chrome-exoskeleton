@@ -102,6 +102,18 @@ plugin_roots() {
   fi
 }
 
+#######################################
+# Mark a plugin root outside this repo as ESM for Playwright and editors.
+#######################################
+write_module_marker() {
+  if (( DRY_RUN )); then
+    print -r -- "would write: ${1}"
+    return 0
+  fi
+  printf '{\n    "type": "module",\n    "private": true\n}\n' > "${1}"
+  log::info "wrote ESM marker | path='${1}'"
+}
+
 is_plugin_dir() {
   [[ -e "${1}/page.ts" || -e "${1}/page.tsx" || -e "${1}/tab.tsx" ]]
 }
@@ -144,10 +156,17 @@ cmd_link() {
         run_mut ln -s "${dir}" "${link}"
       fi
     done
-    # Roots outside this repo need node_modules beside them for editor tooling
-    # and for Playwright to resolve packages from a spec's realpath.
-    if [[ "${root:A}" != "${ROOT_DF:A}" && ! -e "${root}/node_modules" ]]; then
-      run_mut ln -s "${FW}/node_modules" "${root}/node_modules"
+    # Roots outside this repo need two things beside them: node_modules, so
+    # editors and Playwright resolve packages from a spec's realpath, and a
+    # package.json declaring ESM, so Playwright loads their specs the same way
+    # it loads the framework's (mixed CJS/ESM runs break the shared harness).
+    if [[ "${root:A}" != "${ROOT_DF:A}" ]]; then
+      if [[ ! -e "${root}/node_modules" ]]; then
+        run_mut ln -s "${FW}/node_modules" "${root}/node_modules"
+      fi
+      if [[ ! -e "${root}/package.json" ]]; then
+        write_module_marker "${root}/package.json"
+      fi
     fi
   done
   for link in "${FARM}"/*(N@); do

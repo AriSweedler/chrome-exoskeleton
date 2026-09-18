@@ -64,7 +64,10 @@ one worker, and the popup is tested by navigating to
 Plugin specs import the harness as `@exo-e2e/fixtures` and `@exo-e2e/helpers`;
 the alias is declared in each plugin root's `tsconfig.json`. (Playwright's
 testDir does not follow symlinks, hence realpath projects rather than the
-mounts.)
+mounts.) A plugin root outside this repo also carries a `node_modules` symlink
+and a `package.json` with `"type": "module"`, both created by `exo link`:
+Playwright picks a file's module format from its nearest `package.json`, and a
+run that mixes ESM and CommonJS specs breaks on the shared harness.
 
 ### The fixture-page pattern
 
