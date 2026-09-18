@@ -11,7 +11,7 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
-        "types": ["chrome", "vite/client", "vitest/globals"],
+        "types": ["chrome", "node", "vite/client", "vitest/globals"],
         "baseUrl": ".",
         "paths": {
             "@exo/*": ["src/*"],

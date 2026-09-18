@@ -1,0 +1,12 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@exo/*": ["../src/*"],
+            "@exo-e2e/*": ["../e2e/*"]
+        }
+    },
+    "include": ["**/*.ts", "**/*.tsx", "../src/test/**/*"],
+    "exclude": ["node_modules"]
+}

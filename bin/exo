@@ -1,0 +1,440 @@
+#!/usr/bin/env zsh
+# exo — the chrome-exoskeleton driver.
+#
+# Plugins are directories. This repo's own live in plugins/; a machine's private
+# ones live in ${XDG_DATA_HOME}/chrome-exoskeleton/plugins (the local dotfiles
+# tier). `exo link` mounts every one of them at src/plugins/<name>, which is the
+# only path the build, the tests and the @exo/plugins/<name> imports ever see.
+#
+# Run it as `exo ...` (symlinked onto PATH from ~/.config/bin) or as
+# `zsh bin/exo ...` from the framework root. -h for usage.
+set -euo pipefail
+
+readonly FW="${${0:A}:h:h}"
+readonly FARM="${FW}/src/plugins"
+readonly ROOT_DF="${FW}/plugins"
+readonly DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+readonly LDF_HOME="${DATA_HOME}/chrome-exoskeleton"
+readonly ROOT_LDF="${LDF_HOME}/plugins"
+readonly ENV_ZSH="${LDF_HOME}/env.zsh"
+readonly DENYLIST="${LDF_HOME}/denylist.txt"
+readonly NPM_REGISTRY="https://registry.npmjs.org/"
+
+readonly c_red=$'\e[31m' c_green=$'\e[32m' c_yellow=$'\e[33m' c_cyan=$'\e[36m' c_bold=$'\e[1m' c_rst=$'\e[0m'
+log::info() { print -u2 -- "${c_green}[INFO]${c_rst} $*"; }
+log::warn() { print -u2 -- "${c_yellow}[WARN]${c_rst} $*"; }
+log::ok()   { print -u2 -- "${c_green}[OK]${c_rst} $*"; }
+log::err()  { print -u2 -- "${c_red}[ERROR]${c_rst} $*"; return 0; }
+
+# Flags (set by main, read everywhere).
+DRY_RUN=0
+E2E=0
+PERSONAL=0
+FORMAT_CHECK=0
+TIER=""
+KIND="page"
+NAME=""
+typeset -a PASSTHROUGH=()
+
+help() {
+  cat <<HELP
+${c_green}exo${c_rst} — chrome-exoskeleton driver
+
+${c_bold}Usage:${c_rst}
+  exo <command> [flags]
+
+${c_bold}Commands:${c_rst}
+  link                 Mount every plugin at src/plugins/<name>; prune stale mounts
+  check [--e2e]        link, then eslint, prettier, tsc, vitest, lockfile and leak checks
+                       (--e2e adds a build and the Playwright suite)
+  build [--personal]   link, type-check and build to dist/ (--personal: without the
+                       local tier's plugins, to dist-personal/)
+  format [--check]     prettier --write (or --check) over every framework and plugin file
+  status               What is mounted from where, dangling mounts, dist age, snapshots
+  deps <npm args...>   npm with the registry pinned to ${NPM_REGISTRY}
+  new --name <n> --tier df|ldf [--kind page|tab|handler]
+                       Scaffold a plugin from templates/ and mount it
+
+${c_bold}Flags:${c_rst}
+  --dry-run            Print mutations instead of performing them
+  -h, --help           This help
+
+${c_bold}Environment:${c_rst}
+  EXO_IGNORE_DIR_LOCAL=true   Ignore the local tier's plugins (what --personal sets)
+  EXO_PLUGIN_DIRS=a:b         Extra plugin roots, colon-separated
+  XDG_DATA_HOME               Local tier root (default ~/.local/share)
+
+${c_bold}Plugin roots:${c_rst}
+  this repo    ${ROOT_DF}
+  local tier   ${ROOT_LDF}
+HELP
+}
+
+#######################################
+# Run a state-changing command, or print it under --dry-run.
+#######################################
+run_mut() {
+  if (( DRY_RUN )); then
+    print -r -- "would run: $*"
+    return 0
+  fi
+  "$@"
+}
+
+#######################################
+# node <framework>/node_modules/<relative bin path> — never npx (network-touching, slow).
+#######################################
+nm() {
+  node "${FW}/node_modules/${1}" "${@:2}"
+}
+
+#######################################
+# Every directory that may hold plugins, one per line: this repo's plugins/,
+# the local tier's (unless EXO_IGNORE_DIR_LOCAL=true), then EXO_PLUGIN_DIRS.
+#######################################
+plugin_roots() {
+  print -r -- "${ROOT_DF}"
+  if [[ "${EXO_IGNORE_DIR_LOCAL:-}" != "true" ]]; then
+    print -r -- "${ROOT_LDF}"
+  fi
+  if [[ -n "${EXO_PLUGIN_DIRS:-}" ]]; then
+    print -l -- "${(@s.:.)EXO_PLUGIN_DIRS}"
+  fi
+}
+
+is_plugin_dir() {
+  [[ -e "${1}/page.ts" || -e "${1}/page.tsx" || -e "${1}/tab.tsx" ]]
+}
+
+#######################################
+# Mount every plugin into the farm; prune mounts that no longer point at a plugin.
+# Fails on a plugin name present in two roots or a real directory shadowing a mount.
+#######################################
+cmd_link() {
+  typeset -A owner
+  local root dir name link
+  run_mut mkdir -p "${FARM}"
+  for root in "${(@f)$(plugin_roots)}"; do
+    if [[ ! -d "${root}" ]]; then
+      log::info "plugin root absent, skipping | root='${root}'"
+      continue
+    fi
+    for dir in "${root}"/*(N/); do
+      name="${dir:t}"
+      [[ "${name}" == node_modules ]] && continue
+      if ! is_plugin_dir "${dir}"; then
+        log::warn "not a plugin: no page.ts, page.tsx or tab.tsx | dir='${dir}'"
+        continue
+      fi
+      if [[ -n "${owner[${name}]:-}" ]]; then
+        log::err "plugin name present in two roots | name='${name}' first='${owner[${name}]}' second='${dir}'"
+        return 1
+      fi
+      owner[${name}]="${dir}"
+      link="${FARM}/${name}"
+      if [[ -L "${link}" ]]; then
+        if [[ "${link:A}" != "${dir:A}" ]]; then
+          run_mut rm "${link}"
+          run_mut ln -s "${dir}" "${link}"
+        fi
+      elif [[ -e "${link}" ]]; then
+        log::err "a real entry shadows the plugin mount | path='${link}' fix='move it into a plugin root'"
+        return 1
+      else
+        run_mut ln -s "${dir}" "${link}"
+      fi
+    done
+    # Roots outside this repo need node_modules beside them for editor tooling
+    # and for Playwright to resolve packages from a spec's realpath.
+    if [[ "${root:A}" != "${ROOT_DF:A}" && ! -e "${root}/node_modules" ]]; then
+      run_mut ln -s "${FW}/node_modules" "${root}/node_modules"
+    fi
+  done
+  for link in "${FARM}"/*(N@); do
+    name="${link:t}"
+    if [[ -z "${owner[${name}]:-}" || ! -e "${link}" ]]; then
+      log::info "pruning stale mount | link='${link}'"
+      run_mut rm "${link}"
+    fi
+  done
+  log::info "plugins mounted | count='${#owner}' names='${(kj:, :)owner}'"
+}
+
+#######################################
+# node on PATH (the local tier's env.zsh may provide it) and a usable node_modules.
+#######################################
+need_node() {
+  if [[ -r "${ENV_ZSH}" ]]; then
+    source "${ENV_ZSH}"
+  fi
+  if ! command -v node >/dev/null; then
+    log::err "node not found | fix='install node (brew install node), or provide it from ${ENV_ZSH}'"
+    return 1
+  fi
+  if [[ ! -d "${FW}/node_modules" ]]; then
+    log::err "node_modules missing | fix='exo deps ci'"
+    return 1
+  fi
+}
+
+check_plugin_folders() {
+  local dir failed=0
+  for dir in "${FARM}"/*(N-/); do
+    if ! is_plugin_dir "${dir}"; then
+      log::err "mounted plugin lacks page.ts, page.tsx and tab.tsx | dir='${dir}'"
+      failed=1
+    fi
+  done
+  return "${failed}"
+}
+
+#######################################
+# Every source file prettier should see: the framework's and, through the
+# mounts, every plugin's (find -L follows the symlinks).
+#######################################
+prettier_files() {
+  local -a dirs=()
+  local dir
+  for dir in src e2e; do
+    [[ -d "${dir}" ]] && dirs+=("${dir}")
+  done
+  find -L "${dirs[@]}" -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.css' \) -not -path '*/node_modules/*'
+}
+
+lockfile_assert() {
+  local bad
+  bad="$(grep -o '"resolved": "https\{0,1\}://[^/"]*' package-lock.json | grep -v 'registry.npmjs.org' || true)"
+  if [[ -n "${bad}" ]]; then
+    log::err "package-lock.json resolves packages outside registry.npmjs.org | fix='exo deps install'"
+    print -u2 -- "${bad}" | sort -u
+    return 1
+  fi
+}
+
+#######################################
+# Refuse tracked framework content matching the machine's denylist (kept in the
+# local tier so the detector itself cannot leak). No-op where no denylist exists.
+#######################################
+leak_grep() {
+  if [[ ! -r "${DENYLIST}" ]]; then
+    return 0
+  fi
+  local hits
+  hits="$(git -C "${FW}" ls-files -z | xargs -0 grep -nIiEf "${DENYLIST}" -- 2>/dev/null || true)"
+  if [[ -n "${hits}" ]]; then
+    log::err "denylisted identifiers in tracked framework files | denylist='${DENYLIST}'"
+    print -u2 -- "${hits}" | head -20
+    return 1
+  fi
+}
+
+ensure_playwright_browser() {
+  if [[ -d "${HOME}/Library/Caches/ms-playwright" || -d "${HOME}/.cache/ms-playwright" ]]; then
+    return 0
+  fi
+  log::info "installing the Playwright chromium build"
+  nm @playwright/test/cli.js install chromium
+}
+
+build_extension() {
+  local out="${1}"
+  EXO_DIST="${out}" nm typescript/bin/tsc -p tsconfig.build.json
+  EXO_DIST="${out}" nm vite/bin/vite.js build
+}
+
+cmd_check() {
+  cd "${FW}"
+  need_node
+  cmd_link
+  check_plugin_folders
+  local -a mounted=("${FARM}"/*(N-/))
+  log::info "eslint"
+  nm eslint/bin/eslint.js . "${mounted[@]}" --max-warnings 0
+  log::info "prettier"
+  nm prettier/bin/prettier.cjs --check --ignore-path .prettierignore ${(f)"$(prettier_files)"}
+  log::info "tsc"
+  nm typescript/bin/tsc --noEmit
+  log::info "vitest"
+  nm vitest/vitest.mjs run --reporter=dot
+  log::info "lockfile registry"
+  lockfile_assert
+  log::info "leak grep"
+  leak_grep
+  if (( E2E )); then
+    ensure_playwright_browser
+    log::info "build for e2e"
+    build_extension dist
+    log::info "playwright"
+    nm @playwright/test/cli.js test
+  fi
+  log::ok "all checks passed"
+}
+
+cmd_build() {
+  cd "${FW}"
+  need_node
+  local out=dist
+  if (( PERSONAL )); then
+    export EXO_IGNORE_DIR_LOCAL=true
+    out=dist-personal
+  fi
+  cmd_link
+  build_extension "${out}"
+  if (( PERSONAL )); then
+    unset EXO_IGNORE_DIR_LOCAL
+    cmd_link
+  fi
+  log::ok "built | out='${FW}/${out}' next='reload the extension at chrome://extensions'"
+}
+
+cmd_format() {
+  cd "${FW}"
+  need_node
+  cmd_link
+  if (( FORMAT_CHECK )); then
+    nm prettier/bin/prettier.cjs --check --ignore-path .prettierignore ${(f)"$(prettier_files)"}
+    return
+  fi
+  nm prettier/bin/prettier.cjs --write --ignore-path .prettierignore ${(f)"$(prettier_files)"}
+}
+
+tier_of() {
+  local real="${1:A}"
+  if [[ "${real}" == "${ROOT_DF:A}"/* ]]; then print -r -- df; return; fi
+  if [[ "${real}" == "${ROOT_LDF:A}"/* ]]; then print -r -- ldf; return; fi
+  print -r -- extra
+}
+
+cmd_status() {
+  cd "${FW}"
+  local entry name
+  print -r -- "${c_bold}framework${c_rst} ${FW}"
+  print -r -- "${c_bold}mounts${c_rst} (src/plugins)"
+  for entry in "${FARM}"/*(N); do
+    name="${entry:t}"
+    [[ "${name}" == index.tsx || "${name}" == README.md || "${name}" == contract.test.ts ]] && continue
+    if [[ -L "${entry}" && ! -e "${entry}" ]]; then
+      print -r -- "  ${c_red}dangling${c_rst} ${name} -> $(readlink "${entry}")"
+    elif [[ -L "${entry}" ]]; then
+      print -r -- "  $(tier_of "${entry}")  ${name} -> ${entry:A}  snapshots=$(find -L "${entry}" -path '*/examples/*.html' 2>/dev/null | wc -l | tr -d ' ')"
+    else
+      print -r -- "  ${c_yellow}real dir (not a mount)${c_rst} ${name}"
+    fi
+  done
+  print -r -- "${c_bold}roots${c_rst}"
+  for entry in "${(@f)$(plugin_roots)}"; do
+    if [[ -d "${entry}" ]]; then print -r -- "  present ${entry}"; else print -r -- "  absent  ${entry}"; fi
+  done
+  print -r -- "${c_bold}node${c_rst} $(command -v node || print -r -- 'not found') $(node --version 2>/dev/null || true)"
+  if [[ -f dist/manifest.json ]]; then
+    print -r -- "${c_bold}dist${c_rst} version=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("dist/manifest.json","utf8")).version)') built=$(stat -f '%Sm' dist/manifest.json)"
+  else
+    print -r -- "${c_bold}dist${c_rst} not built (exo build)"
+  fi
+}
+
+cmd_deps() {
+  cd "${FW}"
+  npm_config_registry="${NPM_REGISTRY}" npm "${PASSTHROUGH[@]}"
+  lockfile_assert
+}
+
+#######################################
+# Where a new plugin goes, or fail if the tier would ignore it.
+#######################################
+new_destination() {
+  local dest
+  case "${TIER}" in
+    df)
+      dest="${ROOT_DF}/${NAME}"
+      if git -C "${FW}" check-ignore -q --no-index "plugins/${NAME}/page.ts"; then
+        log::err "this repo ignores the plugin path | dest='${dest}'"
+        return 1
+      fi
+      ;;
+    ldf)
+      dest="${ROOT_LDF}/${NAME}"
+      local git_dir="${HOME}/.local/local-dotfiles.git"
+      if [[ -d "${git_dir}" ]] && git --git-dir="${git_dir}" --work-tree="${HOME}/.local" check-ignore -q --no-index "${dest}/page.ts"; then
+        log::err "the local tier ignores the plugin path | dest='${dest}' fix='add !/share/chrome-exoskeleton/ to ${git_dir}/info/exclude'"
+        return 1
+      fi
+      ;;
+    *)
+      log::err "invalid tier | tier='${TIER}' valid_tiers='df, ldf'"
+      return 1
+      ;;
+  esac
+  print -r -- "${dest}"
+}
+
+cmd_new() {
+  if [[ -z "${NAME}" ]]; then log::err "missing --name"; help; return 1; fi
+  if [[ ! "${NAME}" =~ '^[a-z][a-z0-9-]*$' ]]; then
+    log::err "invalid plugin name | name='${NAME}' pattern='^[a-z][a-z0-9-]*$'"
+    return 1
+  fi
+  local template="${FW}/templates/plugin-${KIND}"
+  if [[ ! -d "${template}" ]]; then
+    log::err "unknown kind | kind='${KIND}' valid_kinds='page, tab, handler'"
+    return 1
+  fi
+  local dest file pascal
+  dest="$(new_destination)"
+  if [[ -e "${dest}" ]]; then
+    log::err "plugin already exists | dest='${dest}'"
+    return 1
+  fi
+  pascal="$(print -r -- "${NAME}" | awk -F- '{for (i=1;i<=NF;i++) printf "%s%s", toupper(substr($i,1,1)), substr($i,2)}')"
+  run_mut mkdir -p "${dest}/examples"
+  for file in "${template}"/*(N.); do
+    if (( DRY_RUN )); then
+      print -r -- "would write: ${dest}/${file:t}"
+    else
+      awk -v name="${NAME}" -v pascal="${pascal}" '{gsub(/__NAME__/, name); gsub(/__Pascal__/, pascal); print}' "${file}" > "${dest}/${file:t}"
+    fi
+  done
+  run_mut touch "${dest}/examples/.gitkeep"
+  cmd_link
+  log::ok "plugin scaffolded | dest='${dest}'"
+  if [[ "${TIER}" == ldf ]]; then
+    print -r -- "next: git ldf add \"${dest}\" && git ldf commit -m \"exo: add ${NAME} plugin\" && git ldf push"
+  else
+    print -r -- "next: git -C \"${FW}\" add plugins/${NAME} && git -C \"${FW}\" commit -m \"feat(plugins): ${NAME}\""
+  fi
+}
+
+main() {
+  local cmd=""
+  while (( $# > 0 )); do
+    case "${1}" in
+      -h|--help) help; return 0 ;;
+      --dry-run) DRY_RUN=1 ;;
+      --e2e) E2E=1 ;;
+      --personal) PERSONAL=1 ;;
+      --check) FORMAT_CHECK=1 ;;
+      --tier) TIER="${2:?--tier requires a value}"; shift ;;
+      --kind) KIND="${2:?--kind requires a value}"; shift ;;
+      --name) NAME="${2:?--name requires a value}"; shift ;;
+      --) shift; PASSTHROUGH+=("$@"); break ;;
+      -*)
+        if [[ "${cmd}" == deps ]]; then PASSTHROUGH+=("${1}"); else log::err "unknown flag | flag='${1}'"; help; return 1; fi ;;
+      *)
+        if [[ -z "${cmd}" ]]; then cmd="${1}"; else PASSTHROUGH+=("${1}"); fi ;;
+    esac
+    shift
+  done
+  case "${cmd}" in
+    link) cmd_link ;;
+    check) cmd_check ;;
+    build) cmd_build ;;
+    format) cmd_format ;;
+    status) cmd_status ;;
+    deps) cmd_deps ;;
+    new) cmd_new ;;
+    "") help; return 1 ;;
+    *) log::err "unknown command | command='${cmd}'"; help; return 1 ;;
+  esac
+}
+
+main "$@"

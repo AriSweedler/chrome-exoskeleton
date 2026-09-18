@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+# Pre-commit: the full check suite (mount plugins, eslint, prettier, tsc,
+# vitest, lockfile registry, leak grep). Wired by the package.json "prepare"
+# script, which sets core.hooksPath=.githooks on npm install.
+set -euo pipefail
+readonly FW="${${0:A}:h:h}"
+exec zsh "${FW}/bin/exo" check
