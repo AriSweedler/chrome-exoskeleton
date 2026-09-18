@@ -55,7 +55,7 @@ through a mount and never `git add` one, in either tier.
   § Submodules says what follows (and how to get back on `main` when
   `branch --show-current` prints nothing).
 - **Pushing the tiers follows `/ari-dotfiles`**: `git ldf push` after a
-  local-tier commit; never `git df push`, end with "Run `git_df_push` when ready."
+  local-tier commit; never `git df push`, end with "Run `dotfiles push` when ready."
 - **`exo` owns the toolchain.** Never bare `npm`/`npx` in the framework
   (`exo deps <npm args>` pins the registry so the public lockfile never records
   the work mirror); new plugins come from `exo new`, never a hand-made
