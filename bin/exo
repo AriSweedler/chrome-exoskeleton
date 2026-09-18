@@ -231,6 +231,17 @@ lockfile_assert() {
 }
 
 #######################################
+# The denylist as a grep -f pattern file: comment and blank lines dropped.
+# Prints the temp file's path; the caller removes it.
+#######################################
+denylist_patterns() {
+  local patterns
+  patterns="$(mktemp)"
+  grep -vE '^#|^$' "${DENYLIST}" > "${patterns}"
+  print -r -- "${patterns}"
+}
+
+#######################################
 # Refuse tracked framework content matching the machine's denylist (kept in the
 # local tier so the detector itself cannot leak). No-op where no denylist exists.
 #######################################
@@ -238,14 +249,35 @@ leak_grep() {
   if [[ ! -r "${DENYLIST}" ]]; then
     return 0
   fi
-  local hits
+  local patterns hits
+  patterns="$(denylist_patterns)"
   # Case-sensitive on purpose: -i makes short patterns match inside base64 hashes.
-  hits="$(git -C "${FW}" ls-files -z | xargs -0 grep -nIEf "${DENYLIST}" -- 2>/dev/null || true)"
+  hits="$(git -C "${FW}" ls-files -z | xargs -0 grep -nIEf "${patterns}" -- 2>/dev/null || true)"
+  rm -f "${patterns}"
   if [[ -n "${hits}" ]]; then
     log::err "denylisted identifiers in tracked framework files | denylist='${DENYLIST}'"
     print -u2 -- "${hits}" | head -20
     return 1
   fi
+}
+
+#######################################
+# Refuse a commit identity that matches the denylist (a work address in a
+# public repo's history). No-op where no denylist exists.
+#######################################
+identity_check() {
+  if [[ ! -r "${DENYLIST}" ]]; then
+    return 0
+  fi
+  local email patterns
+  email="$(git -C "${FW}" config user.email || true)"
+  patterns="$(denylist_patterns)"
+  if print -r -- "${email}" | grep -qEf "${patterns}"; then
+    rm -f "${patterns}"
+    log::err "commit identity matches the denylist | user.email='${email}' fix='git -C ${FW} config user.email <personal address>'"
+    return 1
+  fi
+  rm -f "${patterns}"
 }
 
 ensure_playwright_browser() {
@@ -280,6 +312,8 @@ cmd_check() {
   lockfile_assert
   log::info "leak grep"
   leak_grep
+  log::info "commit identity"
+  identity_check
   if (( E2E )); then
     ensure_playwright_browser
     log::info "build for e2e"
@@ -418,9 +452,9 @@ cmd_new() {
   cmd_link
   log::ok "plugin scaffolded | dest='${dest}'"
   if [[ "${TIER}" == ldf ]]; then
-    print -r -- "next: git ldf add \"${dest}\" && git ldf commit -m \"exo: add ${NAME} plugin\" && git ldf push"
+    print -r -- "next: git ldf add \"${dest}\" && git ldf commit -m \"chrome-exoskeleton: ${NAME}: new plugin\" && git ldf push"
   else
-    print -r -- "next: git -C \"${FW}\" add plugins/${NAME} && git -C \"${FW}\" commit -m \"feat(plugins): ${NAME}\""
+    print -r -- "next: git -C \"${FW}\" add plugins/${NAME} && git -C \"${FW}\" commit -m \"feat(plugins): ${NAME} — <what it does>\""
   fi
 }
 
