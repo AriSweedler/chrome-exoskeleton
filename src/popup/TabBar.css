@@ -1,0 +1,44 @@
+.tab-navigation {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+
+.tab-navigation button {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+.tab-navigation button:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.tab-navigation button.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+    background: transparent;
+}
+
+.tab-content {
+    padding: 0;
+}
+
+.tab-empty-state {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+}
