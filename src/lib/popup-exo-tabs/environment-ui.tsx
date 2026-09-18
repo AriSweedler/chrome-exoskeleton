@@ -5,6 +5,14 @@ import {navigateAndToast} from '@exo/lib/service-worker/navigate-with-toast';
 import {theme} from '@exo/theme/default';
 import type {EnvironmentInfo} from '@exo/lib/environments';
 
+// Environment-switch button colors. Only this component uses them.
+const envButton = {
+    specializedBg: 'hsla(142, 76%, 36%, 0.8)',
+    fallbackBg: 'hsla(142, 76%, 36%, 0.5)',
+    specializedHoverBg: 'hsla(142, 71%, 45%, 0.9)',
+    border: 'hsla(142, 71%, 45%, 0.3)',
+} as const;
+
 /** A popup tab body: the environment-switch button row above `Inner`, if any. */
 export function withEnvRow(
     getEnvs: (url: string) => EnvironmentInfo[] | undefined,
@@ -37,14 +45,14 @@ export async function navigateToEnv(url: string, envName: string): Promise<void>
 
 const STYLE = {
     current: {
-        bg: theme.envButton.fallbackBg,
-        hoverBg: theme.envButton.fallbackBg,
+        bg: envButton.fallbackBg,
+        hoverBg: envButton.fallbackBg,
         cursor: 'default' as const,
         opacity: 0.5,
     },
     other: {
-        bg: theme.envButton.specializedBg,
-        hoverBg: theme.envButton.specializedHoverBg,
+        bg: envButton.specializedBg,
+        hoverBg: envButton.specializedHoverBg,
         cursor: 'pointer' as const,
         opacity: 1,
     },
@@ -68,7 +76,7 @@ export function EnvButton({info}: {info: EnvironmentInfo}) {
                 padding: '10px 8px',
                 fontSize: '14px',
                 fontWeight: 'bold',
-                border: `1px solid ${theme.envButton.border}`,
+                border: `1px solid ${envButton.border}`,
                 borderRadius: '4px',
                 backgroundColor: s.bg,
                 color: theme.text.white,
