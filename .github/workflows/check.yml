@@ -1,0 +1,81 @@
+name: check
+
+# Runs on every change to this repo, which is exactly "when the framework tree
+# changes": the dotfiles that consume this repo as a submodule never trigger it.
+# The local tier's private plugins are never present here; they are checked by
+# the local-tier pre-push hook on the machine that owns them.
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+permissions:
+    contents: write
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: '24'
+                  cache: 'npm'
+
+            - name: Ensure zsh (bin/exo is a zsh script)
+              run: command -v zsh || sudo apt-get install -y zsh
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Install the Playwright chromium build
+              run: npx playwright install --with-deps chromium
+
+            - name: exo check --e2e
+              run: EXO_IGNORE_DIR_LOCAL=true zsh bin/exo check --e2e
+
+            - name: Package the build
+              run: cd dist && zip -r ../extension.zip . && cd ..
+
+            - uses: actions/upload-artifact@v6
+              with:
+                  name: extension-build
+                  path: extension.zip
+
+    release:
+        runs-on: ubuntu-latest
+        needs: check
+        if: github.ref == 'refs/heads/main'
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: 2
+
+            - name: Detect a manifest version bump
+              id: version_check
+              run: |
+                  current="$(jq -r .version manifest.json)"
+                  previous="$(git show HEAD~1:manifest.json | jq -r .version)"
+                  if [ "$current" != "$previous" ]; then
+                    echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                    echo "version=$current" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - uses: actions/download-artifact@v8
+              if: steps.version_check.outputs.version_changed == 'true'
+              with:
+                  name: extension-build
+
+            - uses: softprops/action-gh-release@v2
+              if: steps.version_check.outputs.version_changed == 'true'
+              with:
+                  tag_name: v${{ steps.version_check.outputs.version }}
+                  name: v${{ steps.version_check.outputs.version }}
+                  files: extension.zip
+                  generate_release_notes: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
