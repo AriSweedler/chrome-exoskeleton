@@ -1,6 +1,6 @@
 import React from 'react';
 import {theme} from '@exo/theme/default';
-import {useTabEnablement} from '@exo/lib/popup-exo-tabs/use-tab-enablement';
+import {useTabEnablement} from '@exo/lib/popup-tabs/use-tab-enablement';
 
 interface TabEnablementSectionProps {
     tabId: string;

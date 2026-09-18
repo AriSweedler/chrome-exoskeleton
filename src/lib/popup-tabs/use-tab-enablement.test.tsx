@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {renderHook, waitFor, act} from '@testing-library/react';
-import {isTabEnabled, useTabEnablement} from '@exo/lib/popup-exo-tabs/use-tab-enablement';
+import {isTabEnabled, useTabEnablement} from '@exo/lib/popup-tabs/use-tab-enablement';
 
 describe('useTabEnablement', () => {
     beforeEach(() => {

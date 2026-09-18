@@ -1,4 +1,4 @@
-import {TabRegistry} from '@exo/lib/popup-exo-tabs/tab-registry';
+import {TabRegistry} from '@exo/lib/popup-tabs/tab-registry';
 import {__Pascal__Component} from '@exo/plugins/__NAME__/__Pascal__Component';
 
 TabRegistry.register({

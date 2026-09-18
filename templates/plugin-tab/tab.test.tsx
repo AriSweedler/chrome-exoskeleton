@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {TabRegistry} from '@exo/lib/popup-exo-tabs/tab-registry';
+import {TabRegistry} from '@exo/lib/popup-tabs/tab-registry';
 import '@exo/plugins/__NAME__/tab';
 
 describe('__NAME__ tab', () => {
