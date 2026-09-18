@@ -19,7 +19,6 @@ framework and its plugins.
 | Framework (= the public repo) and its public plugins under `plugins/` | `~/.config/chrome-exoskeleton/`, upstream `github.com/AriSweedler/chrome-exoskeleton` | df |
 | Skills that travel with the framework (this one) | `~/.config/chrome-exoskeleton/skills/<name>/`, linked into `~/.claude/skills` by `/ari-dotfiles-skill-registry` | df |
 | `exo`, the driver | `~/.config/bin/exo -> ../chrome-exoskeleton/bin/exo` | df |
-| `git_push_as_personal`, the only way the framework is pushed (human-only) | `~/.config/bin/git_push_as_personal` | df |
 | Private plugins | `~/.local/share/chrome-exoskeleton/plugins/<name>/` | ldf |
 | `env.zsh` (node for hooks), `denylist.txt` (what the public repo must never contain), `plugins/{tsconfig.json,eslint.config.js,package.json}` (editor and Playwright config) | `~/.local/share/chrome-exoskeleton/` | ldf |
 
@@ -42,12 +41,12 @@ through a mount and never `git add` one, in either tier.
   files and your `user.email`, `.githooks/commit-msg` greps the message, both
   against the local tier's `denylist.txt`; on a machine without that file
   nothing is enforced, so review the diff by eye.
-- **Pushing the framework is the user's, never yours.** They run
-  `git_push_as_personal` inside `~/.config/chrome-exoskeleton`; it pushes as
-  the personal account whatever gh account or ssh key is active, verifies the
-  remote, and refreshes `origin/main`. Claude Code is denied that command and
-  MUST NOT push the framework any other way (`git push`, `git -C … push`,
-  `gh auth switch`). Ask, wait, continue.
+- **Pushing the framework is the user's, never yours.** `dotfiles push`
+  (`/ari-dotfiles` § Pushing) pushes it as the personal account whatever gh
+  account or ssh key is active, verifies the remote, and refreshes
+  `origin/main`. Claude Code is denied that command and MUST NOT push the
+  framework any other way (`git push`, `git -C … push`, `gh auth switch`).
+  Ask, wait, continue.
 - **Framework commits go directly on `main`** with explicit paths
   (`git -C ~/.config/chrome-exoskeleton add <files>`): no feature branch, no PR,
   never `git add -A` or `.`. Run `exo check` yourself before committing. A
@@ -126,10 +125,11 @@ with the tier's workflow below.
    conventional commits as in the log: `feat(plugins): <name> — <summary>`,
    `fix(exo): …`, `docs(skills): …`, scopes `plugins`, `exo`, `skills`, `e2e`,
    `ci`, `docs`.
-2. Tell the user: "run `git_push_as_personal` in `~/.config/chrome-exoskeleton`",
-   and wait. Only when they asked to ship; otherwise stop here and say the
-   commit is local. Confirm with `git -C ~/.config/chrome-exoskeleton status -sb`
-   → `## main...origin/main`, no `[ahead N]`.
+2. The push is the user's: say "Run `dotfiles push --submodules-only` when
+   ready" (`/ari-dotfiles` § Submodules step 3) and wait. Only when they asked
+   to ship; otherwise stop here and say the commit is local. Confirm with
+   `git -C ~/.config/chrome-exoskeleton status -sb` → `## main...origin/main`,
+   no `[ahead N]`.
 3. Hand over to `/ari-dotfiles` § Submodules for the rest of the dotfiles change.
 
 Skills in `~/.config/chrome-exoskeleton/skills/<name>/` follow these same steps;
@@ -168,8 +168,8 @@ Never `--no-verify`, in any repo. Never edit `denylist.txt` to make a check pass
 | `git ldf push` prints `[EXO-PREPUSH] failed` | the suite failed; the commit stands, nothing pushed | fix, commit, push again; `exo check --e2e` reproduces it. `EXO_PUSH_E2E=0` only when the user asks, never for a red suite |
 | `git ldf push` exits 1 with no `[EXO-PREPUSH]` line | network or ssh to the local tier's remote | the commit is safe; retry later |
 | `git ldf push`: `framework missing` | the framework is not checked out on this machine | `/ari-dotfiles` § Submodules, then `exo deps ci` |
-| `git_push_as_personal`: `Personal account is not logged into gh` | no personal gh login on this machine | stop; `gh auth login` is the user's to run |
-| push rejected non-fast-forward, or `Remote ref does not match after push` | remote `main` moved | `git -C ~/.config/chrome-exoskeleton pull --rebase origin main`, re-run `exo check` by hand (a rebase skips the hook), ask for the push again |
+| `dotfiles push` log: `Personal account is not logged into gh` | no personal gh login on this machine | stop; `gh auth login` is the user's to run |
+| `dotfiles push` log: `Push rejected` (non-fast-forward) or `Remote ref does not match after push` | remote `main` moved | `git -C ~/.config/chrome-exoskeleton pull --rebase origin main`, re-run `exo check` by hand (a rebase skips the hook), ask for the push again |
 | `exo`: `node not found` | personal machine without node, or `env.zsh` missing | stop and report; do not install node |
 | `exo new`: `plugin name present in two roots` | the name exists in the other tier | `rm -r` the half-scaffold, `exo link`, pick another name or the other tier |
 
