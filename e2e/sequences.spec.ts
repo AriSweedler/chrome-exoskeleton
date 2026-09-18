@@ -31,11 +31,13 @@ test.describe('multi-keystroke sequences (content script)', () => {
     test('the help overlay lists the sequence as gg', async ({context}) => {
         const page = await openFixturePage(context, GDOC_URL, GDOC_HTML);
 
+        // The overlay can open before the playground has finished its async
+        // enablement read and registered the chord, so retry until it lists gg.
         await expect(async () => {
+            await page.keyboard.press('Escape');
             await page.keyboard.press('Shift+Slash');
-            await expect(page.getByText('Keyboard Shortcuts')).toBeVisible({timeout: 500});
+            await expect(page.locator('kbd', {hasText: 'gg'})).toBeVisible({timeout: 500});
         }).toPass({timeout: 5000});
-        await expect(page.locator('kbd', {hasText: 'gg'})).toBeVisible();
     });
 
     test('gg fires the sequence and hides both keystrokes from the page', async ({context}) => {
