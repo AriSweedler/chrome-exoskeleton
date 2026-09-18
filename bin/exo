@@ -220,7 +220,8 @@ leak_grep() {
     return 0
   fi
   local hits
-  hits="$(git -C "${FW}" ls-files -z | xargs -0 grep -nIiEf "${DENYLIST}" -- 2>/dev/null || true)"
+  # Case-sensitive on purpose: -i makes short patterns match inside base64 hashes.
+  hits="$(git -C "${FW}" ls-files -z | xargs -0 grep -nIEf "${DENYLIST}" -- 2>/dev/null || true)"
   if [[ -n "${hits}" ]]; then
     log::err "denylisted identifiers in tracked framework files | denylist='${DENYLIST}'"
     print -u2 -- "${hits}" | head -20
