@@ -1,19 +1,22 @@
 ---
 name: ari-dotfile-submodule-chrome-exoskeleton
-description: Work on the Chrome Exoskeleton as a dotfiles citizen — the framework is a shared-tier submodule at ~/.config/chrome-exoskeleton (public repo), private plugins live in the local tier at ~/.local/share/chrome-exoskeleton/plugins, and `exo` drives link, check, build. Commit, push and pointer-bump workflows for each side, submodule mechanics, and what to do when a check refuses.
+description: Work on the Chrome Exoskeleton as a dotfiles citizen — the framework repo at ~/.config/chrome-exoskeleton (public) holds the engine and public plugins, private plugins live in the local tier at ~/.local/share/chrome-exoskeleton/plugins, and `exo` drives link, check, build. Where things go, how each side is committed and pushed, and what to do when a check refuses.
 ---
 
 # Chrome Exoskeleton in the dotfiles
 
 The Chrome extension is a framework plus plugins, split across the two dotfiles
 tiers of `/ari-dotfiles` (df = shared, `git df`, `~/.config`, every machine;
-ldf = local, `git ldf`, `~/.local`, this machine).
+ldf = local, `git ldf`, `~/.local`, this machine). The framework directory is
+its own git repo inside the shared tier; `/ari-dotfiles` § Submodules says how
+a commit there becomes part of a dotfiles change. This skill covers the
+framework and its plugins.
 
 ## Layout
 
 | Piece | Path | Tier |
 |---|---|---|
-| Framework (= the submodule = the public repo) and its public plugins under `plugins/` | `~/.config/chrome-exoskeleton/`, submodule of `github.com/AriSweedler/chrome-exoskeleton` (declared in `~/.gitmodules`, gitdir `~/dotfiles.git/modules/`) | df |
+| Framework (= the public repo) and its public plugins under `plugins/` | `~/.config/chrome-exoskeleton/`, upstream `github.com/AriSweedler/chrome-exoskeleton` | df |
 | Skills that travel with the framework (this one) | `~/.config/chrome-exoskeleton/skills/<name>/`, linked into `~/.claude/skills` by `/ari-dotfiles-skill-registry` | df |
 | `exo`, the driver | `~/.config/bin/exo -> ../chrome-exoskeleton/bin/exo` | df |
 | `git_push_as_personal`, the only way the framework is pushed (human-only) | `~/.config/bin/git_push_as_personal` | df |
@@ -22,7 +25,7 @@ ldf = local, `git ldf`, `~/.local`, this machine).
 
 `exo status` lists which plugins are mounted from which tier.
 
-**Edit and stage a plugin at its real path**: `plugins/<name>/` in the submodule
+**Edit and stage a plugin at its real path**: `plugins/<name>/` in the framework
 or `~/.local/share/chrome-exoskeleton/plugins/<name>/`. A *mount* is the symlink
 `exo link` puts at `~/.config/chrome-exoskeleton/src/plugins/<name>`; never edit
 through a mount and never `git add` one, in either tier.
@@ -43,26 +46,25 @@ through a mount and never `git add` one, in either tier.
   `git_push_as_personal` inside `~/.config/chrome-exoskeleton`; it pushes as
   the personal account whatever gh account or ssh key is active, verifies the
   remote, and refreshes `origin/main`. Claude Code is denied that command and
-  MUST NOT push the submodule any other way (`git push`, `git -C … push`,
+  MUST NOT push the framework any other way (`git push`, `git -C … push`,
   `gh auth switch`). Ask, wait, continue.
 - **Framework commits go directly on `main`** with explicit paths
   (`git -C ~/.config/chrome-exoskeleton add <files>`): no feature branch, no PR,
-  never `git add -A` or `.`. Run `exo check` yourself before committing.
-- **Other machines see a framework change only through a shared-tier pointer
-  bump**, and the shared-tier pre-commit refuses a bump whose commit is not on
-  the framework's `origin/main`. Pushing the tiers follows `/ari-dotfiles`:
-  `git ldf push` after a local-tier commit; never `git df push`, end with
-  "Run `git_df_push` when ready."
-- **`exo` owns the toolchain.** Never bare `npm`/`npx` in the submodule
+  never `git add -A` or `.`. Run `exo check` yourself before committing. A
+  commit here is not the end of the dotfiles change: `/ari-dotfiles`
+  § Submodules says what follows (and how to get back on `main` when
+  `branch --show-current` prints nothing).
+- **Pushing the tiers follows `/ari-dotfiles`**: `git ldf push` after a
+  local-tier commit; never `git df push`, end with "Run `git_df_push` when ready."
+- **`exo` owns the toolchain.** Never bare `npm`/`npx` in the framework
   (`exo deps <npm args>` pins the registry so the public lockfile never records
   the work mirror); new plugins come from `exo new`, never a hand-made
-  directory; run `exo link` after `git ldf pull`, `git df submodule update`, or
-  any manual change under a plugin root. If `exo` is not on `PATH`, run
-  `~/.config/chrome-exoskeleton/bin/exo`; never substitute raw `npm run`.
-- **Every submodule command is `cd ~ && git df submodule …`.** Plain
-  `git submodule` targets whatever repo the cwd is in and prints nothing here.
+  directory; run `exo link` after `git ldf pull`, after `/ari-dotfiles` refreshes
+  the framework checkout, or after any manual change under a plugin root. If
+  `exo` is not on `PATH`, run `~/.config/chrome-exoskeleton/bin/exo`; never
+  substitute raw `npm run`.
 - **Any other checkout of this extension is history only.** Never edit, commit
-  or build there; `cd` into the submodule or the local tier first.
+  or build there; `cd` into the framework or the local tier first.
 
 ## Commands
 
@@ -87,7 +89,6 @@ Both `exo check` and `exo build` end with an `[OK]` line; anything else is a fai
 | `~/.config/chrome-exoskeleton/.githooks/pre-commit` | every framework commit | `exo check` | never |
 | `~/.config/chrome-exoskeleton/.githooks/commit-msg` | every framework commit | denylist grep of the message | never |
 | `~/.config/git/local-dotfiles-hooks/pre-push` | `git ldf push` touching `share/chrome-exoskeleton/` | `exo check --e2e`; prints `[EXO-PREPUSH] passed\|failed`; no line = out of scope | `EXO_PUSH_E2E=0`, only when the user asks |
-| `~/.config/git/dotfiles-hooks/pre-commit` | staged `.config/chrome-exoskeleton` pointer | fetches the framework's `origin/main`, refuses a pointer not on it | never |
 
 `core.hooksPath` for the framework is set by `exo deps ci` (the `prepare`
 script); a fresh checkout has no hooks until then.
@@ -96,9 +97,9 @@ script); a fresh checkout has no hooks until then.
 
 Change under `~/.local/share/chrome-exoskeleton/` → Private plugin. Change
 under `~/.config/chrome-exoskeleton/` → Framework. Both at once → Framework
-first (its push and pointer bump), then the local tier. Every workflow ends with
-`exo build` and telling the user to reload the extension card at
-`chrome://extensions`.
+first (its push and what `/ari-dotfiles` adds), then the local tier. Every
+workflow ends with `exo build` and telling the user to reload the extension card
+at `chrome://extensions`.
 
 ### New plugin
 
@@ -118,18 +119,10 @@ with the tier's workflow below.
    working, not an error.
 3. `git ldf push` (5-minute tool timeout: the hook builds and runs the browser suite).
 
-### Framework or public plugin (submodule)
+### Framework or public plugin
 
-0. **Be on `main`.** `git -C ~/.config/chrome-exoskeleton branch --show-current`
-   must print `main`. It prints nothing after any `git df pull` or
-   `git df submodule update`: the shared tier has `submodule.recurse=true`, which
-   checks the recorded pointer out detached. Nothing committed yet →
-   `git -C ~/.config/chrome-exoskeleton switch main`. Committed while detached →
-   `git -C ~/.config/chrome-exoskeleton branch -f main HEAD`, only if
-   `git -C ~/.config/chrome-exoskeleton merge-base --is-ancestor main HEAD`
-   succeeds; otherwise stop and ask.
-1. Check identity: `git -C ~/.config/chrome-exoskeleton config user.email` is the
-   personal address. Commit on `main` with explicit paths. Messages are
+1. `exo check`. Check identity: `git -C ~/.config/chrome-exoskeleton config user.email`
+   is the personal address. Commit on `main` with explicit paths. Messages are
    conventional commits as in the log: `feat(plugins): <name> — <summary>`,
    `fix(exo): …`, `docs(skills): …`, scopes `plugins`, `exo`, `skills`, `e2e`,
    `ci`, `docs`.
@@ -137,29 +130,10 @@ with the tier's workflow below.
    and wait. Only when they asked to ship; otherwise stop here and say the
    commit is local. Confirm with `git -C ~/.config/chrome-exoskeleton status -sb`
    → `## main...origin/main`, no `[ahead N]`.
-3. Bump the shared-tier pointer, unless `git df diff --quiet HEAD -- .config/chrome-exoskeleton` says there is nothing to bump:
-   ```zsh
-   git df add ~/.config/chrome-exoskeleton && git df commit -m "chrome-exoskeleton: bump to $(git -C ~/.config/chrome-exoskeleton rev-parse --short HEAD) (<what it carries>)"
-   ```
-   End with "Run `git_df_push` when ready."
+3. Hand over to `/ari-dotfiles` § Submodules for the rest of the dotfiles change.
 
-Skills in `~/.config/chrome-exoskeleton/skills/<name>/` follow these same steps.
-`git df add` refuses them (`fatal: Pathspec '…' is in submodule
-'.config/chrome-exoskeleton'`): the only thing `git df add` accepts under that
-path is the directory itself, the pointer.
-
-End state, all four must hold:
-
-```
-git -C ~/.config/chrome-exoskeleton status -sb         → ## main...origin/main
-cd ~ && git df submodule status                         →  <sha> .config/chrome-exoskeleton (heads/main)   leading space, not +
-git df status --short -- .config/chrome-exoskeleton    → (empty)
-git df log --oneline -1                                 → <hash> chrome-exoskeleton: bump to <sha> (…)
-```
-
-`submodule status` prefixes: space = checkout matches the pointer; `+` = checkout
-ahead of the pointer (bump needed, or update on another machine); `-` = not
-initialized.
+Skills in `~/.config/chrome-exoskeleton/skills/<name>/` follow these same steps;
+they are files of this repo, not of the shared tier.
 
 ### Load the build
 
@@ -169,21 +143,15 @@ personal-only build).
 
 ### Sync a machine
 
-Existing machine, after `git df pull`:
+After `/ari-dotfiles` has refreshed the framework checkout on a machine:
 
 ```zsh
-cd ~ && git df submodule update --init
 exo link && exo build
 ```
 
-If `package-lock.json` changed in the pull, `exo deps ci` first. The pull leaves
-the submodule detached; step 0 above puts it back on `main` before the next
-framework commit.
-
-Fresh machine: `new-machine apply dotfiles_repo` initializes the submodule and
+If `package-lock.json` changed, `exo deps ci` first. Fresh machine:
 `new-machine apply chrome_exoskeleton` runs `exo deps ci` (wires the hooks) and
-`exo build`; `new-machine check` reports `submodule_uninitialized`,
-`submodule_drift` and the exoskeleton's own verdicts. Then Load unpacked. On a
+`exo build`; `new-machine check` reports its verdicts. Then Load unpacked. On a
 personal machine node must be on `PATH` (no `env.zsh`) and there is no
 denylist.
 
@@ -194,18 +162,16 @@ Never `--no-verify`, in any repo. Never edit `denylist.txt` to make a check pass
 | symptom | cause | do |
 |---|---|---|
 | `exo check`: `denylisted identifiers in tracked framework files` | a company hostname, id or ticket number in the public tree | move the plugin or the identifier to the local tier; re-run |
-| `exo check`: `commit identity matches the denylist` | work `user.email` in the submodule | `git -C ~/.config/chrome-exoskeleton config user.email <personal address>` |
+| `exo check`: `commit identity matches the denylist` | work `user.email` in the framework repo | `git -C ~/.config/chrome-exoskeleton config user.email <personal address>` |
 | `commit-msg`: denylisted identifier in the message | the message | reword; commit again |
 | `exo check`: lint, prettier, tsc or vitest red | code | fix (`exo format` for format-only); commit again |
 | `git ldf push` prints `[EXO-PREPUSH] failed` | the suite failed; the commit stands, nothing pushed | fix, commit, push again; `exo check --e2e` reproduces it. `EXO_PUSH_E2E=0` only when the user asks, never for a red suite |
 | `git ldf push` exits 1 with no `[EXO-PREPUSH]` line | network or ssh to the local tier's remote | the commit is safe; retry later |
-| `git ldf push`: `framework missing` | submodule not initialized on this machine | `cd ~ && git df submodule update --init`, `exo deps ci` |
-| shared-tier pre-commit: `pointer … is not on origin/main` | step 2 not done; a stale `main` pushed (step 0 skipped); or offline, so `origin/main` is stale | do steps 0 and 2, then re-run the `git df commit`; no re-stage needed |
+| `git ldf push`: `framework missing` | the framework is not checked out on this machine | `/ari-dotfiles` § Submodules, then `exo deps ci` |
 | `git_push_as_personal`: `Personal account is not logged into gh` | no personal gh login on this machine | stop; `gh auth login` is the user's to run |
 | push rejected non-fast-forward, or `Remote ref does not match after push` | remote `main` moved | `git -C ~/.config/chrome-exoskeleton pull --rebase origin main`, re-run `exo check` by hand (a rebase skips the hook), ask for the push again |
 | `exo`: `node not found` | personal machine without node, or `env.zsh` missing | stop and report; do not install node |
 | `exo new`: `plugin name present in two roots` | the name exists in the other tier | `rm -r` the half-scaffold, `exo link`, pick another name or the other tier |
-| `git df commit`: nothing to commit on a bump | pointer already at HEAD | nothing to bump; say so |
 
 ## Key locations
 
