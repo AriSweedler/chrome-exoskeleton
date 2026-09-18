@@ -62,6 +62,7 @@ src/
   plugins/               the mount point: symlinks made by exo link (gitignored)
 plugins/                 plugins shipped with the framework
 templates/               scaffolds for exo new
+skills/                  Claude Code skills that travel with this repo (linked by the owner's dotfiles)
 e2e/                     Playwright harness and framework specs
 docs/                    guides
 ```
