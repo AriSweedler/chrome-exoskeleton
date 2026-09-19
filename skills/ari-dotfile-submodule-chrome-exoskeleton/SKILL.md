@@ -125,7 +125,7 @@ with the tier's workflow below.
    conventional commits as in the log: `feat(plugins): <name> — <summary>`,
    `fix(exo): …`, `docs(skills): …`, scopes `plugins`, `exo`, `skills`, `e2e`,
    `ci`, `docs`.
-2. The push is the user's: say "Run `dotfiles push --submodules-only` when
+2. The push is the user's: say "Run `dotfiles push --submodules` when
    ready" (`/ari-dotfiles` § Submodules step 3) and wait. Only when they asked
    to ship; otherwise stop here and say the commit is local. Confirm with
    `git -C ~/.config/chrome-exoskeleton status -sb` → `## main...origin/main`,
