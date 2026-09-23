@@ -1,80 +1,105 @@
+import {keybindings} from '@exo/lib/keybindings';
+import {isTabEnabled} from '@exo/lib/popup-tabs/use-tab-enablement';
+import {NotificationType, Notifications} from '@exo/lib/toast-notification';
+import {waitFor} from '@exo/lib/wait-for';
+import * as autoscroll from '@exo/plugins/github-autoscroll/autoscroll';
 import {
-    goToChangedFiles,
-    goToConversation,
-    initializeAutoScroll,
-    isGitHubHost,
-    isGitHubPRChangesPage,
-    isGitHubPRPage,
+    forgetSweep,
     markAutoHiddenFilesViewed,
     unmarkAutoHiddenFilesViewed,
-} from '@exo/plugins/github-autoscroll';
+} from '@exo/plugins/github-autoscroll/auto-hidden';
+import {type FoldAction, foldActiveFile} from '@exo/plugins/github-autoscroll/cursor';
+import {getFiles} from '@exo/plugins/github-autoscroll/files';
 import {
     scrollPageDown,
     scrollToPageBottom,
     scrollToPageTop,
 } from '@exo/plugins/github-autoscroll/scroll';
-import {keybindings} from '@exo/lib/keybindings';
-import {Storage} from '@exo/lib/storage';
-import {Notifications} from '@exo/lib/toast-notification';
+import {
+    goToChangedFiles,
+    goToConversation,
+    isGitHubHost,
+    isGitHubPRChangesPage,
+    isGitHubPRPage,
+} from '@exo/plugins/github-autoscroll/url';
 
-declare global {
-    interface Window {
-        __ghAutoScrollStop?: (() => void) | undefined;
+/** The popup tab's id; its enablement toggle gates the auto-run. */
+const TAB_ID = 'github-autoscroll';
+const SITE_CONTEXT = 'GitHub';
+const PR_CONTEXT = 'GitHub PR';
+const NO_FILES_MESSAGE = "No files found. Make sure you're on a GitHub PR changes page.";
+
+const onPRPage = (): boolean => isGitHubPRPage(window.location.href);
+
+// --- autoscroll -----------------------------------------------------------
+
+function announceAdvance(outcome: autoscroll.AdvanceOutcome): void {
+    if (outcome.kind === 'all-viewed') {
+        Notifications.show({message: 'All files viewed', replace: true});
+    } else if (outcome.wrapped) {
+        Notifications.show({message: 'Wrapped to the first unviewed file', replace: true});
     }
+    // An ordinary advance announces itself: the ring moves and the page scrolls.
 }
 
 /** Start autoscroll if it isn't running. True when it is running afterward. */
 function startAutoscroll(): boolean {
-    if (typeof window.__ghAutoScrollStop === 'function') return true;
-    const stopFn = initializeAutoScroll();
-    if (!stopFn) return false;
-    window.__ghAutoScrollStop = stopFn;
+    if (autoscroll.isRunning()) return true;
+    if (!autoscroll.start({onAdvance: announceAdvance})) return false;
     Notifications.show({message: 'GitHub PR Autoscroll enabled'});
     return true;
 }
 
-/** Stop autoscroll if it is running (idempotent). */
 function stopAutoscroll(): void {
-    if (typeof window.__ghAutoScrollStop !== 'function') return;
-    window.__ghAutoScrollStop();
+    if (!autoscroll.isRunning()) return;
+    autoscroll.stop();
     Notifications.show({message: 'GitHub PR Autoscroll disabled', opacity: 0.5});
 }
 
-/** 'a': flip autoscroll — the one label-less surface that genuinely means "toggle". */
+/** 'a': the one label-less surface that genuinely means "toggle". */
 function toggleAutoscroll(): void {
-    if (typeof window.__ghAutoScrollStop === 'function') {
+    if (autoscroll.isRunning()) {
         stopAutoscroll();
     } else if (!startAutoscroll()) {
+        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+    }
+}
+
+/**
+ * Auto-run on a Files changed page the popup has not switched off. GitHub
+ * renders the file list progressively, so wait for the first diff rather
+ * than guess a delay.
+ */
+async function autorun(): Promise<void> {
+    if (!isGitHubPRChangesPage(window.location.href) || autoscroll.isRunning()) return;
+    if (!(await isTabEnabled(TAB_ID))) return;
+    const rendered = await waitFor(() => getFiles().length > 0, {intervalMs: 250, attempts: 40});
+    if (!rendered || autoscroll.isRunning() || !isGitHubPRChangesPage(window.location.href)) return;
+    startAutoscroll();
+}
+
+// --- folds ----------------------------------------------------------------
+
+function fold(action: FoldAction): void {
+    const outcome = foldActiveFile(action);
+    if (outcome === 'no-active-file') {
         Notifications.show({
-            message: "No files found. Make sure you're on a GitHub PR changes page.",
+            message: 'No active file — press a to start autoscroll',
+            type: NotificationType.Error,
+            replace: true,
+        });
+    } else if (outcome === 'no-fold-control') {
+        Notifications.show({
+            message: 'The active file has no fold control',
+            type: NotificationType.Error,
+            replace: true,
         });
     }
+    // Otherwise the fold itself is the feedback.
 }
 
-/**
- * Try to auto-run autoscroll on GitHub PR changes pages
- */
-async function tryAutoRunAutoscroll() {
-    if (!isGitHubPRChangesPage(window.location.href)) return;
+// --- the d sweep ----------------------------------------------------------
 
-    // Prevent race condition if already running
-    if (typeof window.__ghAutoScrollStop === 'function') return;
-
-    const exorun = await Storage.get<boolean>('exorun-github-autoscroll');
-    const shouldAutoRun = exorun === undefined ? true : exorun;
-
-    if (shouldAutoRun) {
-        startAutoscroll();
-    }
-}
-
-/**
- * Register the PR tab-navigation keybindings on any GitHub PR page and remove
- * them when navigating to a non-PR GitHub page — we must not swallow those
- * keystrokes elsewhere on the site. Never calls keybindings.unlisten(): the
- * listener is a singleton shared by every page module, and an attached
- * listener with no matching bindings is harmless.
- */
 /**
  * 'd': mark this stretch's auto-hidden files as viewed, then advance a
  * viewport — so HOLDING d sweeps a huge PR, forcing GitHub to lazy-render
@@ -105,110 +130,127 @@ function showAutoHiddenFiles(): void {
     });
 }
 
-// Scroll shortcuts for every GitHub page. Registering the 'g g' sequence
-// makes the registry swallow GitHub's own g-prefixed nav (g c, g i, ...).
-// That is a deliberate tradeoff — the Ctrl+V pass-through still sends a
-// literal g to the page.
-function registerScrollShortcuts(): void {
+// --- keys -----------------------------------------------------------------
+
+function registerKeybindings(): void {
     keybindings.registerAll([
+        // Every GitHub page. Registering the 'g g' sequence makes the registry
+        // swallow GitHub's own g-prefixed nav (g c, g i, ...): a deliberate
+        // tradeoff — the Ctrl+V pass-through still sends a literal g.
         {
             key: 'G',
             modifiers: {shift: true},
             description: 'Scroll to the bottom of the page',
             handler: () => scrollToPageBottom(),
-            context: 'GitHub',
+            context: SITE_CONTEXT,
         },
         {
             sequence: ['g', 'g'],
             description: 'Scroll to the top of the page',
             handler: () => scrollToPageTop(),
-            context: 'GitHub',
+            context: SITE_CONTEXT,
+        },
+        // Pull request pages only; elsewhere on the site these keys fall through.
+        {
+            key: 'c',
+            description: 'Go to Conversation tab',
+            handler: goToConversation,
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'f',
+            description: 'Go to Files changed tab',
+            handler: goToChangedFiles,
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'a',
+            description: 'Toggle PR autoscroll',
+            handler: toggleAutoscroll,
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            sequence: ['z', 'o'],
+            description: 'Open the active file',
+            handler: () => fold('open'),
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            sequence: ['z', 'c'],
+            description: 'Close the active file',
+            handler: () => fold('close'),
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            sequence: ['z', 'a'],
+            description: 'Toggle the active file open/closed',
+            handler: () => fold('toggle'),
+            context: PR_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'd',
+            description:
+                'Mark auto-hidden files viewed + scroll down (hold to sweep; skips large diffs)',
+            handler: markAutoHiddenFilesAndAdvance,
+            context: PR_CONTEXT,
+            when: onPRPage,
+            silent: true,
+        },
+        {
+            key: 'D',
+            modifiers: {shift: true},
+            description: 'Show the auto-hidden files again (unmark as viewed)',
+            handler: showAutoHiddenFiles,
+            context: PR_CONTEXT,
+            when: onPRPage,
         },
     ]);
     keybindings.listen();
 }
 
-function syncPRTabShortcuts() {
-    if (isGitHubPRPage(window.location.href)) {
-        keybindings.registerAll([
-            {
-                key: 'c',
-                description: 'Go to Conversation tab',
-                handler: goToConversation,
-                context: 'GitHub PR',
-            },
-            {
-                key: 'f',
-                description: 'Go to Files changed tab',
-                handler: goToChangedFiles,
-                context: 'GitHub PR',
-            },
-            {
-                key: 'd',
-                description:
-                    'Mark auto-hidden files viewed + scroll down (hold to sweep; skips large diffs)',
-                handler: markAutoHiddenFilesAndAdvance,
-                context: 'GitHub PR',
-                silent: true,
-            },
-            {
-                key: 'D',
-                modifiers: {shift: true},
-                description: 'Show the auto-hidden files again (unmark as viewed)',
-                handler: showAutoHiddenFiles,
-                context: 'GitHub PR',
-            },
-            {
-                key: 'a',
-                description: 'Toggle PR autoscroll',
-                handler: toggleAutoscroll,
-                context: 'GitHub PR',
-            },
-        ]);
-        keybindings.listen();
+// --- navigation -----------------------------------------------------------
+
+/**
+ * GitHub is a single-page app: the URL changes without a reload. Chrome's
+ * Navigation API reports every same-document navigation; where it is absent
+ * (tests), poll.
+ */
+function watchNavigation(onChange: () => void): void {
+    let last = window.location.href;
+    const check = (): void => {
+        if (window.location.href === last) return;
+        last = window.location.href;
+        onChange();
+    };
+    const navigation = (
+        window as {navigation?: {addEventListener(type: string, listener: () => void): void}}
+    ).navigation;
+    if (navigation) {
+        navigation.addEventListener('currententrychange', check);
     } else {
-        keybindings.unregister('c');
-        keybindings.unregister('f');
-        keybindings.unregister('d');
-        keybindings.unregister('D', {shift: true});
-        keybindings.unregister('a');
+        window.setInterval(check, 500);
     }
 }
 
-/**
- * Setup SPA navigation listener for GitHub
- */
-function setupSPANavigationListener() {
-    let lastUrl = window.location.href;
-    new MutationObserver(() => {
-        // Guard against teardown (MutationObserver can fire after environment cleanup)
-        if (typeof window === 'undefined') return;
-
-        const currentUrl = window.location.href;
-        if (currentUrl !== lastUrl) {
-            lastUrl = currentUrl;
-
-            // If we left a PR changes page, stop autoscroll
-            if (
-                !isGitHubPRChangesPage(currentUrl) &&
-                typeof window.__ghAutoScrollStop === 'function'
-            ) {
-                window.__ghAutoScrollStop();
-            }
-
-            // Keep the PR tab-navigation shortcuts in sync with the new URL
-            syncPRTabShortcuts();
-
-            // If we entered a PR changes page, maybe start autoscroll
-            setTimeout(tryAutoRunAutoscroll, 500); // Wait for GitHub to render
-        }
-    }).observe(document, {subtree: true, childList: true});
+function onNavigate(): void {
+    // Leaving the Files changed view ends the session quietly; the sweep's
+    // memory is per page too.
+    if (!isGitHubPRChangesPage(window.location.href)) {
+        autoscroll.stop();
+        forgetSweep();
+    }
+    void autorun();
 }
 
-/**
- * Initialize GitHub autoscroll message handlers
- */
-function initializeMessageHandlers() {
+// --- popup messages -------------------------------------------------------
+
+function registerMessageHandlers(): void {
     chrome.runtime.onMessage.addListener(
         (
             message: {type: string; active?: boolean},
@@ -216,62 +258,45 @@ function initializeMessageHandlers() {
             sendResponse: (response: {active: boolean}) => void,
         ) => {
             if (message.type === 'GITHUB_AUTOSCROLL_GET_STATUS') {
-                const active = typeof window.__ghAutoScrollStop === 'function';
-                sendResponse({active});
+                sendResponse({active: autoscroll.isRunning()});
                 return true;
             }
-
             // SET is for surfaces that display a state (the popup button):
             // the request names the state its label promised, so a stale
             // label degrades to a visible self-correcting no-op instead of a
             // silent inverse action. Idempotent; responds with the real state.
-            // (A label-less flip is the 'a' keybinding, handled page-side.)
             if (message.type === 'GITHUB_AUTOSCROLL_SET') {
                 if (message.active) {
                     if (!startAutoscroll()) {
                         Notifications.show({
-                            message:
-                                "No files found. Make sure you're on a GitHub PR changes page.",
+                            message: NO_FILES_MESSAGE,
+                            type: NotificationType.Error,
                         });
                     }
                 } else {
                     stopAutoscroll();
                 }
-                sendResponse({active: typeof window.__ghAutoScrollStop === 'function'});
+                sendResponse({active: autoscroll.isRunning()});
                 return true;
             }
-
             return false;
         },
     );
 }
 
-/**
- * Initialize GitHub autoscroll (runs at module level)
- */
+// --- entry ----------------------------------------------------------------
+
 function initialize(): void {
-    initializeMessageHandlers();
+    registerMessageHandlers();
 
     // The content script runs on <all_urls>; everything past message handling
     // is GitHub-only, so touch nothing (especially the shared keybinding
     // registry) on other sites.
     if (!isGitHubHost(window.location.href)) return;
 
-    setupSPANavigationListener();
-
-    registerScrollShortcuts();
-
-    // Register the PR tab-navigation shortcuts if we loaded onto a PR page
-    syncPRTabShortcuts();
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(tryAutoRunAutoscroll, 500); // Wait for GitHub to render
-        });
-    } else {
-        setTimeout(tryAutoRunAutoscroll, 500); // Wait for GitHub to render
-    }
+    registerKeybindings();
+    watchNavigation(onNavigate);
+    void autorun();
 }
 
-// Self-register: importing this module initializes GitHub autoscroll
 initialize();

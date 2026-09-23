@@ -1,401 +1,313 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {
+    anchorFor,
+    installGitHubBehavior,
+    renderFilesList,
+    type FixtureFile,
+} from '@exo/plugins/github-autoscroll/test-dom';
 
 type ChromeMessageListener = (
-    message: {type: string},
+    message: {type: string; active?: boolean},
     sender: chrome.runtime.MessageSender,
     sendResponse: (response: unknown) => void,
 ) => boolean | void;
 
-declare global {
-    interface Window {
-        __ghAutoScrollStop?: (() => void) | undefined;
-    }
+const PR_ROOT = 'https://github.com/owner/repo/pull/123';
+const PR_CHANGES = `${PR_ROOT}/changes`;
+
+const FILES: FixtureFile[] = [
+    {path: 'src/a.ts'},
+    {path: 'gen/alpha.json', body: 'generated'},
+    {path: 'src/b.ts'},
+];
+
+type Loaded = {
+    autoscroll: typeof import('@exo/plugins/github-autoscroll/autoscroll');
+    cursor: typeof import('@exo/plugins/github-autoscroll/cursor');
+    files: typeof import('@exo/plugins/github-autoscroll/files');
+    keybindings: (typeof import('@exo/lib/keybindings'))['keybindings'];
+};
+
+/** Every module set a test loaded; each one's key listener is detached after the test. */
+const loaded: Loaded[] = [];
+
+/**
+ * The page module initializes on import, so every test re-imports it fresh
+ * against a stubbed location and chrome. `load` returns the sibling modules
+ * from the same module registry, so their state is the one page.ts uses.
+ */
+async function load(href: string): Promise<Loaded> {
+    vi.stubGlobal('location', {href, hash: ''});
+    await import('@exo/plugins/github-autoscroll/page');
+    const autoscroll = await import('@exo/plugins/github-autoscroll/autoscroll');
+    const cursor = await import('@exo/plugins/github-autoscroll/cursor');
+    const files = await import('@exo/plugins/github-autoscroll/files');
+    const {keybindings} = await import('@exo/lib/keybindings');
+    const modules = {autoscroll, cursor, files, keybindings};
+    loaded.push(modules);
+    return modules;
 }
 
-/** Find the listener that handles GitHub autoscroll messages */
-function findGitHubListener(listeners: ChromeMessageListener[]): ChromeMessageListener {
-    for (const listener of listeners) {
-        const probe = vi.fn();
-        const handled = listener(
-            {type: 'GITHUB_AUTOSCROLL_GET_STATUS'},
-            {} as chrome.runtime.MessageSender,
-            probe,
-        );
-        if (handled === true) {
-            return listener;
-        }
-    }
-    throw new Error('No GitHub autoscroll listener found');
+function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', {key, cancelable: true, bubbles: true, ...init});
+    document.body.dispatchEvent(event);
+    return event;
 }
 
-describe('GitHub Autoscroll Content Script Integration', () => {
+const toastText = () => document.getElementById('exo-notification-container')?.textContent ?? '';
+
+describe('github-autoscroll page module', () => {
     let messageListeners: ChromeMessageListener[] = [];
+    let storage: Record<string, unknown> = {};
+    let uninstall: (() => void) | null = null;
 
-    beforeEach(async () => {
+    beforeEach(() => {
         messageListeners = [];
+        storage = {};
         vi.stubGlobal('chrome', {
             runtime: {
-                onMessage: {
-                    addListener: vi.fn((listener) => {
-                        messageListeners.push(listener);
-                    }),
-                },
+                onMessage: {addListener: vi.fn((listener) => messageListeners.push(listener))},
                 sendMessage: vi.fn(),
             },
             storage: {
                 local: {
-                    get: vi.fn((_key, callback) => {
-                        callback({});
-                    }),
+                    get: vi.fn((_key, callback) => callback(storage)),
+                    set: vi.fn((_items, callback) => callback?.()),
                 },
             },
-            tabs: {
-                query: vi.fn(),
-                sendMessage: vi.fn(),
-            },
+            tabs: {query: vi.fn(), sendMessage: vi.fn()},
         });
-        window.__ghAutoScrollStop = undefined;
-
-        // Mock DOM elements needed for initialization
         document.body.innerHTML = '';
-
-        // Reset module registry to ensure fresh imports
         vi.resetModules();
     });
 
     afterEach(() => {
+        for (const modules of loaded.splice(0)) {
+            modules.autoscroll.stop();
+            modules.keybindings.unlisten();
+        }
+        uninstall?.();
+        uninstall = null;
         vi.unstubAllGlobals();
+        document.body.innerHTML = '';
+        document.querySelectorAll('#exo-notification-container').forEach((el) => el.remove());
     });
 
-    it('registers message listener on load', async () => {
-        await import('@exo/plugins/github-autoscroll/page');
-        expect(chrome.runtime.onMessage.addListener).toHaveBeenCalled();
-    });
+    /** Load on `href` with the fixture files rendered and GitHub emulated. */
+    async function loadWithFiles(href: string): Promise<Loaded> {
+        document.body.innerHTML = renderFilesList(FILES);
+        uninstall = installGitHubBehavior(document);
+        return load(href);
+    }
 
-    it('responds to GITHUB_AUTOSCROLL_GET_STATUS when inactive', async () => {
-        await import('@exo/plugins/github-autoscroll/page');
+    const listener = () => {
+        const found = messageListeners.find((candidate) => {
+            const probe = vi.fn();
+            return (
+                candidate(
+                    {type: 'GITHUB_AUTOSCROLL_GET_STATUS'},
+                    {} as chrome.runtime.MessageSender,
+                    probe,
+                ) === true
+            );
+        });
+        if (!found) throw new Error('no GitHub autoscroll message listener');
+        return found;
+    };
 
-        const githubListener = findGitHubListener(messageListeners);
-
-        const sendResponse = vi.fn();
-        githubListener({type: 'GITHUB_AUTOSCROLL_GET_STATUS'}, {}, sendResponse);
-
-        expect(sendResponse).toHaveBeenCalledWith({active: false});
-    });
-
-    it('responds to GITHUB_AUTOSCROLL_GET_STATUS when active', async () => {
-        await import('@exo/plugins/github-autoscroll/page');
-
-        const githubListener = findGitHubListener(messageListeners);
-
-        // Simulate autoscroll being active
-        window.__ghAutoScrollStop = vi.fn();
-
-        const sendResponse = vi.fn();
-        githubListener({type: 'GITHUB_AUTOSCROLL_GET_STATUS'}, {}, sendResponse);
-
-        expect(sendResponse).toHaveBeenCalledWith({active: true});
-    });
-
-    describe("'a' toggles autoscroll on PR pages", () => {
-        const pressA = () => {
-            const event = new KeyboardEvent('keydown', {key: 'a', cancelable: true, bubbles: true});
-            document.body.dispatchEvent(event);
-            return event;
-        };
-
-        // A PR page with files, but not the changes tab — so the 500ms
-        // auto-run never fires and only the keystroke drives state.
-        const PR_URL = 'https://github.com/owner/repo/pull/123';
-
-        it('starts autoscroll when inactive, then stops it', async () => {
-            vi.stubGlobal('location', {href: PR_URL});
-            document.body.innerHTML = `
-                <div data-hpc="true">
-                    <div class="d-flex flex-column gap-3">
-                        <div class="Diff-module__diffHeaderWrapper--abc123">
-                            <button aria-pressed="false">Viewed</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            expect(pressA().defaultPrevented).toBe(true);
-            await vi.waitFor(() => expect(window.__ghAutoScrollStop).toBeTypeOf('function'));
-
-            const stopFn = vi.fn();
-            window.__ghAutoScrollStop = stopFn;
-            pressA();
-            await vi.waitFor(() => expect(stopFn).toHaveBeenCalled());
-
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+    describe('popup messages', () => {
+        it('reports the running state', async () => {
+            const {autoscroll} = await loadWithFiles(PR_ROOT);
+            const respond = vi.fn();
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_GET_STATUS'},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenCalledWith({active: false});
+            autoscroll.start();
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_GET_STATUS'},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenLastCalledWith({active: true});
         });
 
-        it('toasts instead of starting when the page has no files', async () => {
-            vi.stubGlobal('location', {href: PR_URL});
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            pressA();
-            await vi.waitFor(() => expect(document.body.textContent).toContain('No files found'));
-            expect(window.__ghAutoScrollStop).toBeUndefined();
-
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+        it('SET names the wanted state and answers with the real one', async () => {
+            const {autoscroll} = await loadWithFiles(PR_ROOT);
+            const respond = vi.fn();
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: true},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenLastCalledWith({active: true});
+            expect(autoscroll.isRunning()).toBe(true);
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: true},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenLastCalledWith({active: true}); // idempotent
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: false},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenLastCalledWith({active: false});
+            expect(autoscroll.isRunning()).toBe(false);
         });
 
-        it('leaves a alone on non-PR GitHub pages', async () => {
-            vi.stubGlobal('location', {href: 'https://github.com/owner/repo'});
+        it('SET on a page without files toasts and stays off', async () => {
+            await load(PR_ROOT);
+            const respond = vi.fn();
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: true},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(respond).toHaveBeenLastCalledWith({active: false});
+            expect(toastText()).toContain('No files found');
+        });
 
-            await import('@exo/plugins/github-autoscroll/page');
-
-            expect(pressA().defaultPrevented).toBe(false);
-
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+        it('ignores other message types', async () => {
+            await load('https://example.com');
+            expect(
+                listener()({type: 'SOMETHING_ELSE'}, {} as chrome.runtime.MessageSender, vi.fn()),
+            ).toBe(false);
         });
     });
 
-    it('returns false for unknown message types', async () => {
-        await import('@exo/plugins/github-autoscroll/page');
-
-        const githubListener = findGitHubListener(messageListeners);
-
-        const sendResponse = vi.fn();
-        const result = githubListener({type: 'UNKNOWN_MESSAGE'}, {}, sendResponse);
-
-        expect(result).toBe(false);
-        expect(sendResponse).not.toHaveBeenCalled();
-    });
-
-    describe('Auto-run on load', () => {
-        it('auto-runs on GitHub PR changes page with default setting', async () => {
-            // Mock GitHub PR page URL
-            vi.stubGlobal('location', {
-                href: 'https://github.com/owner/repo/pull/123/changes',
-            });
-
-            // Mock GitHub PR page structure with files
-            document.body.innerHTML = `
-                <div data-hpc="true">
-                    <div class="d-flex flex-column gap-3">
-                        <div class="Diff-module__diffHeaderWrapper--abc123">
-                            <button aria-pressed="false">Viewed</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Mock storage to return undefined (default behavior)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            chrome.storage.local.get = vi.fn((_key: any, callback: any) => {
-                callback({});
-            }) as unknown as typeof chrome.storage.local.get;
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            // Wait for auto-run (500ms delay + buffer)
-            await new Promise((resolve) => setTimeout(resolve, 600));
-
-            expect(window.__ghAutoScrollStop).toBeTypeOf('function');
+    describe('keys', () => {
+        it('a toggles autoscroll on a PR page, with a toast each way', async () => {
+            const {autoscroll} = await loadWithFiles(PR_ROOT);
+            expect(press('a').defaultPrevented).toBe(true);
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true));
+            expect(toastText()).toContain('GitHub PR Autoscroll enabled');
+            press('a');
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(false));
+            expect(toastText()).toContain('GitHub PR Autoscroll disabled');
         });
 
-        it('respects exorun-github-autoscroll storage setting (false)', async () => {
-            // Mock GitHub PR page URL
-            vi.stubGlobal('location', {
-                href: 'https://github.com/owner/repo/pull/123/changes',
-            });
-
-            // Mock GitHub PR page structure with files
-            document.body.innerHTML = `
-                <div data-hpc="true">
-                    <div class="d-flex flex-column gap-3">
-                        <div class="Diff-module__diffHeaderWrapper--abc123">
-                            <button aria-pressed="false">Viewed</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Mock storage to return false
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            chrome.storage.local.get = vi.fn((_key: any, callback: any) => {
-                callback({'exorun-github-autoscroll': false});
-            }) as unknown as typeof chrome.storage.local.get;
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            // Trigger the load event
-            const loadEvent = new Event('load');
-            window.dispatchEvent(loadEvent);
-
-            // Wait for async operations
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(window.__ghAutoScrollStop).toBeUndefined();
+        it('a toasts instead of starting when the page has no files', async () => {
+            const {autoscroll} = await load(PR_ROOT);
+            press('a');
+            await vi.waitFor(() => expect(toastText()).toContain('No files found'));
+            expect(autoscroll.isRunning()).toBe(false);
         });
 
-        it('does not auto-run on non-GitHub pages', async () => {
-            // Mock non-GitHub URL
-            vi.stubGlobal('location', {
-                href: 'https://example.com',
-            });
-
-            // Mock storage to return true (auto-run enabled)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            chrome.storage.local.get = vi.fn((_key: any, callback: any) => {
-                callback({'exorun-github-autoscroll': true});
-            }) as unknown as typeof chrome.storage.local.get;
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            // Trigger the load event
-            const loadEvent = new Event('load');
-            window.dispatchEvent(loadEvent);
-
-            // Wait for async operations
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            expect(window.__ghAutoScrollStop).toBeUndefined();
+        it('leaves a, d and the z chords alone off PR pages, keeping gg / G', async () => {
+            await loadWithFiles('https://github.com/owner/repo/issues/1');
+            window.scrollTo = vi.fn();
+            expect(press('a').defaultPrevented).toBe(false);
+            expect(press('d').defaultPrevented).toBe(false);
+            expect(press('z').defaultPrevented).toBe(false);
+            expect(press('G', {shiftKey: true}).defaultPrevented).toBe(true);
+            expect(press('g').defaultPrevented).toBe(true);
+            expect(press('g').defaultPrevented).toBe(true);
         });
 
-        it('does not auto-run if autoscroll is already active (race condition)', async () => {
-            // Mock GitHub PR page URL
-            vi.stubGlobal('location', {
-                href: 'https://github.com/owner/repo/pull/123/changes',
-            });
-
-            // Mock GitHub PR page structure with files
-            document.body.innerHTML = `
-                <div data-hpc="true">
-                    <div class="d-flex flex-column gap-3">
-                        <div class="Diff-module__diffHeaderWrapper--abc123">
-                            <button aria-pressed="false">Viewed</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Simulate autoscroll already being active
-            const existingStopFn = vi.fn();
-            window.__ghAutoScrollStop = existingStopFn;
-
-            // Mock storage to return undefined (default behavior)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            chrome.storage.local.get = vi.fn((_key: any, callback: any) => {
-                callback({});
-            }) as unknown as typeof chrome.storage.local.get;
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            // Trigger the load event
-            const loadEvent = new Event('load');
-            window.dispatchEvent(loadEvent);
-
-            // Wait for async operations
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            // Should still be the original function, not replaced
-            expect(window.__ghAutoScrollStop).toBe(existingStopFn);
-        });
-    });
-
-    describe('Shared keybinding registry safety', () => {
-        it("does not tear down other modules' keybindings on SPA navigation on non-GitHub sites", async () => {
-            const location = {href: 'https://example.com/app'};
-            vi.stubGlobal('location', location);
-
-            await import('@exo/plugins/github-autoscroll/page');
-            const {keybindings} = await import('@exo/lib/keybindings');
-
-            // Another page module registers a binding and starts listening
-            keybindings.register({key: 'c', description: 'test binding', handler: vi.fn()});
-            keybindings.listen();
-
-            // Simulate an in-page (SPA) navigation: URL change + DOM mutation
-            location.href = 'https://example.com/app/other';
-            document.body.appendChild(document.createElement('div'));
-            await new Promise((resolve) => setTimeout(resolve, 0));
-
-            const event = new KeyboardEvent('keydown', {
-                key: 'c',
-                cancelable: true,
-                bubbles: true,
-            });
-            document.body.dispatchEvent(event);
-            expect(event.defaultPrevented).toBe(true);
-
-            keybindings.unregister('c');
-            keybindings.unlisten();
+        it('touches nothing off GitHub', async () => {
+            await load('https://example.com/owner/repo/pull/1/changes');
+            expect(press('a').defaultPrevented).toBe(false);
+            expect(press('G', {shiftKey: true}).defaultPrevented).toBe(false);
         });
 
-        it("scrolls to the bottom on 'G' on any GitHub page", async () => {
-            vi.stubGlobal('location', {href: 'https://github.com/owner/repo'});
-            const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+        it('zc / zo / za fold the active file', async () => {
+            const {autoscroll, cursor, files} = await loadWithFiles(PR_ROOT);
+            autoscroll.start();
+            const active = () => cursor.getActiveFile()!;
+            expect(active().path).toBe('src/a.ts');
 
-            await import('@exo/plugins/github-autoscroll/page');
+            press('z');
+            press('c');
+            await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(true));
+            press('z');
+            press('o');
+            await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(false));
+            press('z');
+            press('a');
+            await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(true));
+        });
 
-            const event = new KeyboardEvent('keydown', {
-                key: 'G',
-                shiftKey: true,
-                cancelable: true,
-                bubbles: true,
-            });
-            document.body.dispatchEvent(event);
-            expect(event.defaultPrevented).toBe(true);
+        it('a fold key without an active file says so', async () => {
+            await loadWithFiles(PR_ROOT);
+            press('z');
+            press('c');
+            await vi.waitFor(() => expect(toastText()).toContain('No active file'));
+        });
 
-            await vi.waitFor(() => {
-                expect(scrollToSpy).toHaveBeenCalledWith(
+        it('d marks the auto-hidden files and scrolls; D shows them again', async () => {
+            const {files} = await loadWithFiles(PR_ROOT);
+            window.scrollBy = vi.fn();
+            press('d');
+            await vi.waitFor(() =>
+                expect(toastText()).toContain('Marked 1 auto-hidden files as viewed'),
+            );
+            expect(window.scrollBy).toHaveBeenCalled();
+            const gen = () => files.fileByAnchor(anchorFor('gen/alpha.json'))!;
+            await vi.waitFor(() => expect(files.isViewed(gen())).toBe(true));
+
+            press('D', {shiftKey: true});
+            await vi.waitFor(() => expect(toastText()).toContain('Showed 1 auto-hidden files'));
+            await vi.waitFor(() => expect(files.isViewed(gen())).toBe(false));
+        });
+
+        it('G and gg scroll to the page ends on any GitHub page', async () => {
+            await load('https://github.com/owner/repo');
+            window.scrollTo = vi.fn();
+            press('G', {shiftKey: true});
+            await vi.waitFor(() =>
+                expect(window.scrollTo).toHaveBeenCalledWith(
                     expect.objectContaining({top: document.documentElement.scrollHeight}),
-                );
-            });
+                ),
+            );
+            press('g');
+            press('g');
+            await vi.waitFor(() =>
+                expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({top: 0})),
+            );
+        });
+    });
 
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+    describe('auto-run', () => {
+        it('starts on a Files changed page once GitHub has rendered the files', async () => {
+            const {autoscroll} = await loadWithFiles(PR_CHANGES);
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true), {timeout: 2000});
+            expect(toastText()).toContain('GitHub PR Autoscroll enabled');
         });
 
-        it("scrolls to the top on 'gg' on any GitHub page", async () => {
-            vi.stubGlobal('location', {href: 'https://github.com/owner/repo/issues'});
-            const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-
-            await import('@exo/plugins/github-autoscroll/page');
-
-            for (let i = 0; i < 2; i++) {
-                const event = new KeyboardEvent('keydown', {
-                    key: 'g',
-                    cancelable: true,
-                    bubbles: true,
-                });
-                document.body.dispatchEvent(event);
-                expect(event.defaultPrevented).toBe(true);
-            }
-
-            await vi.waitFor(() => {
-                expect(scrollToSpy).toHaveBeenCalledWith(expect.objectContaining({top: 0}));
-            });
-
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+        it('waits for files that render late', async () => {
+            const {autoscroll} = await load(PR_CHANGES);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            expect(autoscroll.isRunning()).toBe(false);
+            document.body.innerHTML = renderFilesList(FILES);
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true), {timeout: 2000});
         });
 
-        it('registers the PR tab shortcuts when loaded on a GitHub PR page', async () => {
-            vi.stubGlobal('location', {href: 'https://github.com/owner/repo/pull/123'});
+        it('respects the popup switch (exorun-github-autoscroll = false)', async () => {
+            storage = {'exorun-github-autoscroll': false};
+            const {autoscroll} = await loadWithFiles(PR_CHANGES);
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            expect(autoscroll.isRunning()).toBe(false);
+        });
 
-            await import('@exo/plugins/github-autoscroll/page');
+        it('does not start on other PR tabs', async () => {
+            const {autoscroll} = await loadWithFiles(PR_ROOT);
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            expect(autoscroll.isRunning()).toBe(false);
+        });
 
-            const event = new KeyboardEvent('keydown', {
-                key: 'c',
-                cancelable: true,
-                bubbles: true,
-            });
-            document.body.dispatchEvent(event);
-            expect(event.defaultPrevented).toBe(true);
+        it('stops when the SPA navigates away from Files changed, and restarts on return', async () => {
+            const {autoscroll} = await loadWithFiles(PR_CHANGES);
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true), {timeout: 2000});
 
-            const {keybindings} = await import('@exo/lib/keybindings');
-            keybindings.unlisten();
+            window.location.href = PR_ROOT;
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(false), {timeout: 2000});
+
+            window.location.href = PR_CHANGES;
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true), {timeout: 2000});
         });
     });
 });

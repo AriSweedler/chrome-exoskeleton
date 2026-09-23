@@ -1,6 +1,6 @@
 import {TabRegistry, matchPriority} from '@exo/lib/popup-tabs/tab-registry';
 import {GitHubAutoscrollContent} from '@exo/plugins/github-autoscroll/GitHubAutoscrollComponent';
-import {isGitHubPRChangesPage} from '@exo/plugins/github-autoscroll';
+import {isGitHubPRChangesPage} from '@exo/plugins/github-autoscroll/url';
 
 TabRegistry.register({
     id: 'github-autoscroll',
