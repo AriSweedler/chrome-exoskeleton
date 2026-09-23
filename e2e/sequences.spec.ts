@@ -1,12 +1,6 @@
 import {test, expect} from './fixtures';
 import type {BrowserContext, Page} from '@playwright/test';
-import {
-    openFixturePage,
-    waitForKeybindings,
-    toastContainer,
-    seenKeys,
-    resetSeenKeys,
-} from './helpers';
+import {openFixturePage, toastContainer, seenKeys, resetSeenKeys} from './helpers';
 import {GDOC_URL, GDOC_HTML} from './fixture-pages';
 
 /**
@@ -20,9 +14,21 @@ import {GDOC_URL, GDOC_HTML} from './fixture-pages';
 // Must stay above SEQUENCE_TTL_MS in src/lib/keybindings.tsx.
 const SEQUENCE_TTL_WAIT_MS = 1_500;
 
+/**
+ * Open the toy doc and wait until the PLAYGROUND has registered its bindings:
+ * the framework's own `?` works the moment the content script loads, but the
+ * playground registers `x` and `gg` only after an async enablement read, so
+ * retry the overlay until it lists gg.
+ */
 const openToyDoc = async (context: BrowserContext): Promise<Page> => {
     const page = await openFixturePage(context, GDOC_URL, GDOC_HTML);
-    await waitForKeybindings(page);
+    await expect(async () => {
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Shift+Slash');
+        await expect(page.locator('kbd', {hasText: 'gg'})).toBeVisible({timeout: 500});
+    }).toPass({timeout: 5000});
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('Keyboard Shortcuts')).not.toBeVisible();
     await resetSeenKeys(page);
     return page;
 };

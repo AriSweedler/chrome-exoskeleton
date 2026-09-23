@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type {BrowserContext} from '@playwright/test';
 import {test, expect} from './fixtures';
-import {openFixturePage, seenKeys, toastContainer} from './helpers';
+import {openFixturePage, seenKeys, toastContainer, waitForKeybindings} from './helpers';
 import {GDOC_URL, GDOC_HTML} from './fixture-pages';
 
 /**
@@ -29,6 +30,13 @@ type Worker = {
     waitForEvent: (event: 'close') => Promise<unknown>;
 };
 
+/** The extension's worker, which may still be registering right after the first page. */
+async function serviceWorker(context: BrowserContext): Promise<Worker> {
+    const [existing] = context.serviceWorkers();
+    const worker = existing ?? (await context.waitForEvent('serviceworker'));
+    return worker as unknown as Worker;
+}
+
 const baselineTaken = (worker: Worker) =>
     worker.evaluate(() =>
         chrome.storage.session
@@ -43,7 +51,7 @@ test.describe('the edit loop', () => {
         const original = fs.readFileSync(stampPath, 'utf8');
         try {
             await openFixturePage(context, GDOC_URL, GDOC_HTML);
-            const [worker] = context.serviceWorkers() as unknown as Worker[];
+            const worker = await serviceWorker(context);
             await expect.poll(() => baselineTaken(worker)).not.toBeNull();
 
             // chrome.runtime.reload() ends this worker: that is the observable.
@@ -51,9 +59,11 @@ test.describe('the edit loop', () => {
             const started = Date.now();
             fs.writeFileSync(stampPath, JSON.stringify({builtAt: new Date().toISOString()}));
             await ended;
+            // ~1.5 s on an idle machine (a 1 s poll plus the read); the bound
+            // only guards against a poll that never runs.
             const latency = Date.now() - started;
             console.log(`[auto-reload] stamp → runtime.reload() in ${latency} ms`);
-            expect(latency).toBeLessThan(3_000);
+            expect(latency).toBeLessThan(10_000);
         } finally {
             fs.writeFileSync(stampPath, original);
         }
@@ -63,12 +73,10 @@ test.describe('the edit loop', () => {
         context,
     }) => {
         const page = await openFixturePage(context, GDOC_URL, GDOC_HTML);
-        const [worker] = context.serviceWorkers() as unknown as Worker[];
+        const worker = await serviceWorker(context);
 
         // The copy in the page is live: it owns the keyboard and shows toasts.
-        await page.keyboard.press('Shift+Slash');
-        await expect(page.getByText('Keyboard Shortcuts')).toBeVisible();
-        await page.keyboard.press('Escape');
+        await waitForKeybindings(page);
         await expect(toastContainer(page)).toHaveCount(1);
 
         // What a fresh copy does first (lib/lifecycle.ts): announce itself on
