@@ -399,3 +399,28 @@ describe('Notifications', () => {
         });
     });
 });
+
+describe('teardown', () => {
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('drops every toast and the container, and a later show starts a fresh container', () => {
+        Notifications.show({message: 'one'});
+        Notifications.show({message: 'two'});
+        expect(document.querySelectorAll('.chrome-ext-notification')).toHaveLength(2);
+
+        Notifications.teardown();
+        expect(document.getElementById('exo-notification-container')).toBeNull();
+        expect(Notifications.hasVisible()).toBe(false);
+
+        Notifications.show({message: 'again'});
+        expect(document.querySelectorAll('#exo-notification-container')).toHaveLength(1);
+        expect(document.querySelectorAll('.chrome-ext-notification')).toHaveLength(1);
+    });
+
+    it('is harmless before anything was shown', () => {
+        Notifications.teardown();
+        expect(document.getElementById('exo-notification-container')).toBeNull();
+    });
+});

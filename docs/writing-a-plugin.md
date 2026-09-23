@@ -93,6 +93,21 @@ not claim the same key.
 
 Keep `page.ts` thin; domain logic goes in sibling modules with their own tests.
 
+An extension reload (every build, see [development.md](development.md))
+injects a fresh copy of the content script into the open tabs, and the copy
+already there retires itself. Anything your page module set up that must not
+outlive it — a MutationObserver, an interval, an engine with a `stop()` —
+goes in a disposer:
+
+```ts
+import {onDispose} from '@exo/lib/lifecycle';
+
+const stop = startWatching();
+onDispose(stop);
+```
+
+Keybindings and toasts are the framework's; they are taken care of.
+
 ## tab.tsx: a popup tab
 
 ```tsx

@@ -263,6 +263,18 @@ export class Notifications {
         toasts.forEach((toast) => this.dismiss(toast as HTMLElement));
     }
 
+    /**
+     * Leave the page: drop every toast at once and the container with them,
+     * so a successor copy of this library starts from a clean document.
+     */
+    static teardown(): void {
+        const toasts = this.container?.querySelectorAll('.chrome-ext-notification') ?? [];
+        toasts.forEach((toast) => this.dismiss(toast as HTMLElement, true));
+        this.container?.remove();
+        this.container = null;
+        this.currentNotification = null;
+    }
+
     private static dismiss(notification: HTMLElement, immediate?: boolean): void {
         // Mark as dismissing so hover handlers cannot revive the toast.
         this.dismissing.add(notification);

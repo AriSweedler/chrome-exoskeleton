@@ -28,8 +28,10 @@ zsh bin/exo build          # mounts plugins, type-checks, builds dist/
 ```
 
 Then in Chrome: `chrome://extensions` → Developer mode → Load unpacked →
-this repo's `dist/` directory. After a rebuild, press the reload icon on the
-extension's card.
+this repo's `dist/` directory. Once. Every later build (`exo build`, or a save
+under `exo dev`) is noticed by the loaded extension, which reloads itself,
+swaps its content script into the open tabs without reloading them, and says
+so with one toast in the page you are looking at.
 
 `bin/exo` is the driver for everything. Put it on your `PATH` (for example
 `ln -s $PWD/bin/exo ~/.local/bin/exo`) and the commands below read as shown.
@@ -46,7 +48,7 @@ extension's card.
 | `exo deps <npm args>` | npm with the registry pinned to registry.npmjs.org |
 | `exo new --name <n> --tier df\|ldf [--kind page\|tab\|handler]` | scaffold a plugin from `templates/` |
 
-`npm run dev` starts Vite with hot reload for the popup and content script.
+`exo dev` rebuilds `dist/` on every save; see [docs/development.md](docs/development.md).
 The usual npm scripts (`test`, `lint`, `format`, `build`) wrap the same driver.
 
 ## Layout

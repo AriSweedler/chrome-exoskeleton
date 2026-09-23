@@ -73,13 +73,15 @@ through a mount and never `git add` one, in either tier.
 |---|---|
 | `exo link` | mount every plugin at `src/plugins/<name>`; prune stale mounts |
 | `exo check [--e2e]` | lint, prettier check, tsc, vitest, lockfile-registry assert, leak grep, identity check; `--e2e` adds a build and Playwright (~90 s) |
-| `exo build [--personal]` | `dist/` for Load unpacked; `--personal` builds without the local tier into `dist-personal/` (run before shipping a framework change) |
+| `exo build [--personal]` | `dist/` for Load unpacked; `--personal` builds without the local tier into `dist-personal/` (run before shipping a framework change). A loaded dist reloads itself after every build |
+| `exo dev` | rebuild `dist/` on every save (`vite build --watch`): the edit loop, no dev server |
 | `exo format [--check]` | prettier over framework and mounted plugins |
 | `exo status` | mounts per tier, dangling mounts, build age, snapshots |
 | `exo deps <npm args>` | npm, registry pinned to npmjs |
 | `exo new --name <slug> --tier df\|ldf [--kind page\|tab\|handler]` | scaffold (default kind `page`) and mount |
 
 Both `exo check` and `exo build` end with an `[OK]` line; anything else is a failure.
+`exo check --e2e` builds into `dist-e2e/`, never into the `dist/` the user has loaded.
 
 ## Hooks
 
@@ -97,8 +99,9 @@ script); a fresh checkout has no hooks until then.
 Change under `~/.local/share/chrome-exoskeleton/` → Private plugin. Change
 under `~/.config/chrome-exoskeleton/` → Framework. Both at once → Framework
 first (its push and what `/ari-dotfiles` adds), then the local tier. Every
-workflow ends with `exo build` and telling the user to reload the extension card
-at `chrome://extensions`.
+workflow ends with `exo build`; the loaded extension picks the build up by
+itself (see Load the build). Never tell the user to reload the extension card
+unless the build changed something Chrome rejected.
 
 ### New plugin
 
@@ -137,9 +140,12 @@ they are files of this repo, not of the shared tier.
 
 ### Load the build
 
-`exo build`, then the user reloads the extension card (Load unpacked
-`~/.config/chrome-exoskeleton/dist` once per profile; `dist-personal/` for a
-personal-only build).
+`exo build`. A loaded extension notices the new build within about a second,
+reloads itself, swaps its content script into the open tabs (no page reloads)
+and toasts once in the active page. The extension card is only for the first
+load per profile (Load unpacked `~/.config/chrome-exoskeleton/dist`;
+`dist-personal/` for a personal-only build) and for a build Chrome rejected.
+While iterating, `exo dev` does the build on every save.
 
 ### Sync a machine
 

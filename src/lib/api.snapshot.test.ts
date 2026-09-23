@@ -15,6 +15,7 @@ const modules = {
     '@exo/lib/environments': () => import('@exo/lib/environments'),
     '@exo/lib/example-dom': () => import('@exo/lib/example-dom'),
     '@exo/lib/keybindings': () => import('@exo/lib/keybindings'),
+    '@exo/lib/lifecycle': () => import('@exo/lib/lifecycle'),
     '@exo/lib/popup-tabs/tab-registry': () => import('@exo/lib/popup-tabs/tab-registry'),
     '@exo/lib/popup-tabs/environment-ui': () => import('@exo/lib/popup-tabs/environment-ui'),
     '@exo/lib/popup-tabs/use-tab-enablement': () =>
@@ -64,6 +65,12 @@ describe('framework API surface', () => {
               "KeybindingRegistry",
               "SEQUENCE_TTL_MS",
               "keybindings",
+            ],
+            "@exo/lib/lifecycle": [
+              "claimPage",
+              "dispose",
+              "isDisposed",
+              "onDispose",
             ],
             "@exo/lib/popup-tabs/environment-ui": [
               "EnvButton",

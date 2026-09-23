@@ -60,6 +60,8 @@ export async function injectContentScript(
 export async function ensureInjectContentScript(scriptPath: string): Promise<void> {
     try {
         const tabs = await chrome.tabs.query({});
+        // The pages the user is looking at come alive first.
+        tabs.sort((a, b) => Number(b.active) - Number(a.active));
 
         for (const tab of tabs) {
             if (!tab.id) continue;

@@ -48,7 +48,10 @@ ${c_bold}Commands:${c_rst}
   check [--e2e]        link, then eslint, prettier, tsc, vitest, lockfile and leak checks
                        (--e2e adds a build and the Playwright suite)
   build [--personal]   link, type-check and build to dist/ (--personal: without the
-                       local tier's plugins, to dist-personal/)
+                       local tier's plugins, to dist-personal/); a loaded dist
+                       reloads itself after every build
+  dev                  link, then rebuild dist/ on every save (vite build --watch):
+                       the edit loop, no dev server
   format [--check]     prettier --write (or --check) over every framework and plugin file
   status               What is mounted from where, dangling mounts, dist age, snapshots
   deps <npm args...>   npm with the registry pinned to ${NPM_REGISTRY}
@@ -316,10 +319,12 @@ cmd_check() {
   identity_check
   if (( E2E )); then
     ensure_playwright_browser
-    log::info "build for e2e"
-    build_extension dist
+    # Its own directory: the suite's build must not reload the extension the
+    # user has loaded from dist/.
+    log::info "build for e2e | out='dist-e2e'"
+    build_extension dist-e2e
     log::info "playwright"
-    nm @playwright/test/cli.js test
+    EXO_DIST=dist-e2e nm @playwright/test/cli.js test
   fi
   log::ok "all checks passed"
 }
@@ -338,7 +343,15 @@ cmd_build() {
     unset EXO_IGNORE_DIR_LOCAL
     cmd_link
   fi
-  log::ok "built | out='${FW}/${out}' next='reload the extension at chrome://extensions'"
+  log::ok "built | out='${FW}/${out}' next='a loaded ${out} reloads itself; first time: chrome://extensions, Load unpacked'"
+}
+
+cmd_dev() {
+  cd "${FW}"
+  need_node
+  cmd_link
+  log::info "watching | out='${FW}/dist' hint='save a file: dist/ rebuilds and a loaded extension reloads itself'"
+  EXO_DIST=dist nm vite/bin/vite.js build --watch
 }
 
 cmd_format() {
@@ -482,6 +495,7 @@ main() {
     link) cmd_link ;;
     check) cmd_check ;;
     build) cmd_build ;;
+    dev) cmd_dev ;;
     format) cmd_format ;;
     status) cmd_status ;;
     deps) cmd_deps ;;

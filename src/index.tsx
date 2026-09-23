@@ -1,3 +1,6 @@
+// First: retire the copy of this script an extension reload may have left
+// behind in this page (see lib/lifecycle.ts).
+import {onDispose} from '@exo/lib/lifecycle';
 import {ShowToastAction, showToastPayload} from '@exo/lib/actions/show-toast.action';
 import {Notifications} from '@exo/lib/toast-notification';
 import {keybindings} from '@exo/lib/keybindings';
@@ -30,6 +33,11 @@ keybindings.registerAll([
     },
 ]);
 keybindings.listen();
+
+// When a newer copy of this script takes over the page, this one lets go of
+// the keyboard and its toasts.
+onDispose(() => keybindings.unlisten());
+onDispose(() => Notifications.teardown());
 
 // The e2e harness waits for this line before driving a page.
 console.log('chrome exoskeleton loaded');

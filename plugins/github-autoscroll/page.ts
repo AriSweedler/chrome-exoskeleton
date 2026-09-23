@@ -1,4 +1,5 @@
 import {keybindings} from '@exo/lib/keybindings';
+import {onDispose} from '@exo/lib/lifecycle';
 import {isTabEnabled} from '@exo/lib/popup-tabs/use-tab-enablement';
 import {NotificationType, Notifications} from '@exo/lib/toast-notification';
 import {waitFor} from '@exo/lib/wait-for';
@@ -221,7 +222,7 @@ function registerKeybindings(): void {
  * Navigation API reports every same-document navigation; where it is absent
  * (tests), poll.
  */
-function watchNavigation(onChange: () => void): void {
+function watchNavigation(onChange: () => void): () => void {
     let last = window.location.href;
     const check = (): void => {
         if (window.location.href === last) return;
@@ -229,13 +230,19 @@ function watchNavigation(onChange: () => void): void {
         onChange();
     };
     const navigation = (
-        window as {navigation?: {addEventListener(type: string, listener: () => void): void}}
+        window as {
+            navigation?: {
+                addEventListener(type: string, listener: () => void): void;
+                removeEventListener(type: string, listener: () => void): void;
+            };
+        }
     ).navigation;
     if (navigation) {
         navigation.addEventListener('currententrychange', check);
-    } else {
-        window.setInterval(check, 500);
+        return () => navigation.removeEventListener('currententrychange', check);
     }
+    const timer = window.setInterval(check, 500);
+    return () => window.clearInterval(timer);
 }
 
 function onNavigate(): void {
@@ -295,8 +302,15 @@ function initialize(): void {
     if (!isGitHubHost(window.location.href)) return;
 
     registerKeybindings();
-    watchNavigation(onNavigate);
+    const stopWatching = watchNavigation(onNavigate);
     void autorun();
+
+    // A newer copy of the content script (after an extension reload) takes
+    // over the page: stop watching and drop the cursor.
+    onDispose(() => {
+        stopWatching();
+        autoscroll.stop();
+    });
 }
 
 initialize();
