@@ -173,3 +173,91 @@ export const GITHUB_BEHAVIOR_SCRIPT = `<script>
   });
 })();
 </script>`;
+
+// --- the diff view settings menu ------------------------------------------
+
+/** GitHub's files toolbar, reduced to the gear that opens the diff view settings. */
+export function renderToolbar(layout: 'unified' | 'split'): string {
+    return `<section class="use-sticky-header-module__stickyHeader__sf0hv PullRequestFilesToolbar-module__toolbar__ztHN6" data-layout="${layout}">
+      <h2 class="sr-only">Pull request toolbar</h2>
+      <button data-component="IconButton" type="button" aria-haspopup="menu" aria-labelledby="diff-settings-tip"
+              class="prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7">
+        <svg data-component="Octicon" aria-hidden="true" class="octicon octicon-gear" viewBox="0 0 16 16" width="16" height="16"></svg>
+      </button>
+      <span class="prc-TooltipV2-Tooltip-tLeuB" id="diff-settings-tip" popover="auto">Open diff view settings</span>
+    </section>`;
+}
+
+const LAYOUT_MENU_HTML = (layout: string) => `<div role="menu" id="exo-test-layout-menu">
+  <div role="group" aria-label="Layout">
+    <div role="menuitemradio" aria-checked="${layout === 'unified'}"><span>Unified</span></div>
+    <div role="menuitemradio" aria-checked="${layout === 'split'}"><span>Split</span></div>
+  </div>
+  <div role="menuitemcheckbox" aria-checked="false">Hide whitespace</div>
+</div>`;
+
+/**
+ * Emulate the diff view settings menu: the gear toggles a menu with the two
+ * Layout radio items (unless `items: false`); picking one records the layout
+ * on the body and closes the menu; Escape closes it. Returns an uninstaller.
+ */
+export function installLayoutMenu(root: Document, {items = true} = {}): () => void {
+    const layoutOf = () =>
+        root.body.dataset.layout ??
+        root.querySelector<HTMLElement>('[data-layout]')?.dataset.layout ??
+        'unified';
+    const close = () => root.getElementById('exo-test-layout-menu')?.remove();
+    const onClick = (event: Event): void => {
+        const target = event.target as Element | null;
+        const gear = target?.closest('button[aria-haspopup="menu"]');
+        if (gear) {
+            if (root.getElementById('exo-test-layout-menu')) close();
+            else {
+                root.body.insertAdjacentHTML(
+                    'beforeend',
+                    items
+                        ? LAYOUT_MENU_HTML(layoutOf())
+                        : '<div role="menu" id="exo-test-layout-menu"><div role="menuitemcheckbox">Hide whitespace</div></div>',
+                );
+            }
+            return;
+        }
+        const radio = target?.closest('[role="menuitemradio"]');
+        if (radio) {
+            root.body.dataset.layout = radio.textContent?.trim() === 'Split' ? 'split' : 'unified';
+            close();
+        }
+    };
+    const onKey = (event: Event): void => {
+        if ((event as KeyboardEvent).key === 'Escape') close();
+    };
+    root.addEventListener('click', onClick);
+    root.addEventListener('keydown', onKey);
+    return () => {
+        root.removeEventListener('click', onClick);
+        root.removeEventListener('keydown', onKey);
+        close();
+    };
+}
+
+/** `installLayoutMenu` as a page script, for the e2e fixture. Same behavior. */
+export const GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR = `<script>
+(() => {
+  const close = () => { const m = document.getElementById('exo-test-layout-menu'); if (m) m.remove(); };
+  const menu = (layout) => '<div role="menu" id="exo-test-layout-menu"><div role="group" aria-label="Layout">'
+    + '<div role="menuitemradio" aria-checked="' + (layout === 'unified') + '"><span>Unified</span></div>'
+    + '<div role="menuitemradio" aria-checked="' + (layout === 'split') + '"><span>Split</span></div>'
+    + '</div><div role="menuitemcheckbox" aria-checked="false">Hide whitespace</div></div>';
+  document.addEventListener('click', (event) => {
+    const gear = event.target && event.target.closest('button[aria-haspopup="menu"]');
+    if (gear) {
+      if (document.getElementById('exo-test-layout-menu')) close();
+      else document.body.insertAdjacentHTML('beforeend', menu(document.body.dataset.layout || 'unified'));
+      return;
+    }
+    const radio = event.target && event.target.closest('[role="menuitemradio"]');
+    if (radio) { document.body.dataset.layout = radio.textContent.trim() === 'Split' ? 'split' : 'unified'; close(); }
+  });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+})();
+</script>`;

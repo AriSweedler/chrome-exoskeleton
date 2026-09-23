@@ -393,6 +393,20 @@ test.describe('the review cursor (Files changed)', () => {
         await expect.poll(() => activeAnchor(page)).toBe(anchor('src/generated/bundle.yaml'));
     });
 
+    test('U switches the diff layout through the settings menu, both ways', async ({context}) => {
+        const page = await openChanges(context);
+        await waitForKeybindings(page);
+
+        await page.keyboard.press('Shift+U');
+        await expect.poll(() => page.evaluate(() => document.body.dataset.layout)).toBe('split');
+        await expectToast(page, 'Split diff');
+        await expect(page.locator('[role="menu"]')).toHaveCount(0);
+
+        await page.keyboard.press('Shift+U');
+        await expect.poll(() => page.evaluate(() => document.body.dataset.layout)).toBe('unified');
+        await expectToast(page, 'Unified diff');
+    });
+
     test('a stops autoscroll and drops the ring', async ({context}) => {
         const page = await openChanges(context);
 

@@ -8,6 +8,7 @@
 import {KEYLOGGER_SNIPPET} from '@exo-e2e/fixture-pages';
 import {
     GITHUB_BEHAVIOR_SCRIPT,
+    GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR,
     anchorFor,
     renderFilesList,
     type FixtureFile,
@@ -46,10 +47,16 @@ export const PR_HTML = `<!doctype html>
   <body>
     <h1 id="app">toy app</h1>
     <div class="spacer"></div>
-    <div class="toolbar">Pull request toolbar</div>
+    <div class="toolbar PullRequestFilesToolbar-module__toolbar__ztHN6">
+      Pull request toolbar
+      <button type="button" aria-haspopup="menu" aria-label="Open diff view settings">
+        <svg class="octicon octicon-gear" viewBox="0 0 16 16" width="16" height="16"></svg>
+      </button>
+    </div>
     ${renderFilesList(PR_FILES)}
     <div class="tail"></div>
     ${GITHUB_BEHAVIOR_SCRIPT}
+    ${GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR}
     ${KEYLOGGER_SNIPPET}
   </body>
 </html>`;

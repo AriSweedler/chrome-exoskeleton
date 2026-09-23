@@ -15,6 +15,7 @@ import {
     getActiveFile,
 } from '@exo/plugins/github-autoscroll/cursor';
 import {getFiles, isViewed, setViewed} from '@exo/plugins/github-autoscroll/files';
+import {toggleDiffLayout} from '@exo/plugins/github-autoscroll/layout';
 import {
     scrollPageDown,
     scrollStep,
@@ -126,6 +127,34 @@ function toggleViewedOnActive(): void {
             type: NotificationType.Error,
             replace: true,
         });
+    }
+}
+
+// --- the diff layout ------------------------------------------------------
+
+/** Flip unified / split through GitHub's diff view settings; GitHub keeps the choice. */
+async function switchDiffLayout(): Promise<void> {
+    const outcome = await toggleDiffLayout();
+    switch (outcome.kind) {
+        case 'switched':
+            Notifications.show({
+                message: outcome.to === 'split' ? 'Split diff' : 'Unified diff',
+                replace: true,
+            });
+            return;
+        case 'no-settings-button':
+            Notifications.show({
+                message: "No diff view settings here — this is the Files changed toolbar's gear",
+                type: NotificationType.Error,
+                replace: true,
+            });
+            return;
+        case 'no-layout-items':
+            Notifications.show({
+                message: 'The diff view settings menu has no Layout items',
+                type: NotificationType.Error,
+                replace: true,
+            });
     }
 }
 
@@ -276,6 +305,14 @@ function registerKeybindings(): void {
             key: 'l',
             description: 'Open the active file (unfold)',
             handler: () => fold('open'),
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'U',
+            modifiers: {shift: true},
+            description: 'Switch the diff layout: unified ⇄ split',
+            handler: () => void switchDiffLayout(),
             context: REVIEW_CONTEXT,
             when: onPRPage,
         },

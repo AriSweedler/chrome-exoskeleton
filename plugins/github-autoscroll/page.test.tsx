@@ -2,7 +2,9 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {
     anchorFor,
     installGitHubBehavior,
+    installLayoutMenu,
     renderFilesList,
+    renderToolbar,
     type FixtureFile,
 } from '@exo/plugins/github-autoscroll/test-dom';
 
@@ -281,6 +283,22 @@ describe('github-autoscroll page module', () => {
             press('v');
             await vi.waitFor(() => expect(files.isViewed(a())).toBe(false));
             expect(cursor.getActiveFile()?.path).toBe('src/a.ts');
+        });
+
+        it('U switches the diff layout through the settings menu and says which', async () => {
+            await loadWithFiles(PR_ROOT);
+            document.body.insertAdjacentHTML('afterbegin', renderToolbar('unified'));
+            const uninstallMenu = installLayoutMenu(document);
+            try {
+                press('U', {shiftKey: true});
+                await vi.waitFor(() => expect(document.body.dataset.layout).toBe('split'));
+                await vi.waitFor(() => expect(toastText()).toContain('Split diff'));
+                press('U', {shiftKey: true});
+                await vi.waitFor(() => expect(document.body.dataset.layout).toBe('unified'));
+                await vi.waitFor(() => expect(toastText()).toContain('Unified diff'));
+            } finally {
+                uninstallMenu();
+            }
         });
 
         it('d marks the auto-hidden files and scrolls; D shows them again', async () => {

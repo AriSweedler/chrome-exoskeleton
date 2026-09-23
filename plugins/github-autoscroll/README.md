@@ -12,6 +12,7 @@ and `v` act on it.
 | ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `a`        | PR pages          | toggle autoscroll: marking a file Viewed moves the cursor to the next unviewed file and pins its header to the top of the viewport (wrapping around; a toast when everything is viewed) |
 | `h` / `l`  | PR pages          | close / open the active file (vim: left folds, right unfolds), then pin it back to the top; `l` on an open file is how you scroll the cursor back into view                             |
+| `U`        | PR pages          | switch the diff layout, unified ⇄ split, through GitHub's diff view settings (GitHub keeps the choice)                                                                                  |
 | `c` / `f`  | PR pages          | jump to the Conversation / Files changed tab                                                                                                                                            |
 | `d`        | PR pages          | mark the auto-hidden files (generated, deleted) Viewed and scroll down a viewport; hold it to sweep a huge PR                                                                           |
 | `D`        | PR pages          | undo `d`: show those files again (files viewed before the page loaded are out of reach: GitHub drops a viewed file's body, which is what identifies it)                                 |
