@@ -69,7 +69,7 @@ function stopAutoscroll(): void {
     Notifications.show({message: 'GitHub PR Autoscroll disabled', opacity: 0.5});
 }
 
-/** 'a': the one label-less surface that genuinely means "toggle". */
+/** The one label-less surface that genuinely means "toggle". */
 function toggleAutoscroll(): void {
     if (autoscroll.isRunning()) {
         stopAutoscroll();
@@ -91,9 +91,9 @@ async function autorun(): Promise<void> {
     startAutoscroll();
 }
 
-// --- the cursor: J / K / v --------------------------------------------------
+// --- the cursor ---------------------------------------------------------------
 
-/** J / K: step to the next / previous unviewed file. Starts autoscroll if it is off. */
+/** Step to the next / previous unviewed file. Starts autoscroll if it is off. */
 function stepCursor(direction: 'next' | 'previous'): void {
     if (!autoscroll.isRunning() && !startAutoscroll()) {
         Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
@@ -103,7 +103,7 @@ function stepCursor(direction: 'next' | 'previous'): void {
 }
 
 /**
- * v: toggle Viewed on the active file. Marking it viewed is a flip like any
+ * Toggle Viewed on the active file. Marking it viewed is a flip like any
  * other, so autoscroll carries the cursor on to the next unviewed file.
  */
 function toggleViewedOnActive(): void {
@@ -159,12 +159,12 @@ function fold(action: FoldAction): void {
     }
 }
 
-// --- the d sweep ----------------------------------------------------------
+// --- the sweep ------------------------------------------------------------
 
 /**
- * 'd': mark this stretch's auto-hidden files as viewed, then advance a
- * viewport — so HOLDING d sweeps a huge PR, forcing GitHub to lazy-render
- * each next stretch of diffs. Silent under auto-repeat: the scroll is the
+ * Mark this stretch's auto-hidden files as viewed, then advance a viewport —
+ * so HOLDING the key sweeps a huge PR, forcing GitHub to lazy-render each
+ * next stretch of diffs. Silent under auto-repeat: the scroll is the
  * feedback, and the toast (replace, not stack) reports only actual marks.
  */
 function markAutoHiddenFilesAndAdvance(): void {
@@ -179,7 +179,7 @@ function markAutoHiddenFilesAndAdvance(): void {
     scrollPageDown();
 }
 
-/** 'D': undo — unmark the auto-hidden files so they show in the list again. */
+/** Undo the sweep — unmark the auto-hidden files so they show in the list again. */
 function showAutoHiddenFiles(): void {
     const {unmarked} = unmarkAutoHiddenFilesViewed();
     Notifications.show({
