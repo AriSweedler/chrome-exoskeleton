@@ -71,6 +71,7 @@ describe('framework API surface', () => {
               "dispose",
               "isDisposed",
               "onDispose",
+              "replacedEventName",
             ],
             "@exo/lib/popup-tabs/environment-ui": [
               "EnvButton",

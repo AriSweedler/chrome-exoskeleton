@@ -63,7 +63,9 @@ describe('content-script lifecycle', () => {
         copy.claimPage(other);
         expect(disposer).not.toHaveBeenCalled();
         // ...a later claim on that same document does.
-        other.dispatchEvent(new Event('exo:content-script-replaced'));
+        other.dispatchEvent(new Event(copy.replacedEventName()));
         expect(disposer).toHaveBeenCalledTimes(1);
+        // sinon-chrome has no id, so the test name falls back to the plain prefix.
+        expect(copy.replacedEventName()).toBe('exo:content-script-replaced');
     });
 });

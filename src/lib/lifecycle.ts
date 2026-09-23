@@ -14,7 +14,20 @@
  * observers, intervals, engines with a stop().
  */
 
-const REPLACED_EVENT = 'exo:content-script-replaced';
+/**
+ * Namespaced by extension id (when there is one): a page script that
+ * happens to dispatch a fixed name must not be able to retire the copy.
+ */
+const REPLACED_EVENT = `${
+    typeof chrome !== 'undefined' && typeof chrome.runtime?.id === 'string'
+        ? chrome.runtime.id
+        : 'exo'
+}:content-script-replaced`;
+
+/** The handover event's name, for tests and tooling. */
+export function replacedEventName(): string {
+    return REPLACED_EVENT;
+}
 
 const disposers: Array<() => void> = [];
 let disposed = false;

@@ -15,8 +15,12 @@ import {
  * extension when a new build lands in dist/ (the edit loop).
  */
 
+// The build watcher comes first: whatever else fails at startup, the next
+// build must still be able to reload us.
+watchForRebuild();
+
 // Did the previous worker reload us for a new build? Take its note before
-// anything else so the announcement below can follow the injection.
+// the injection so the announcement can follow it.
 const rebuild = takeRebuildNote();
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -26,7 +30,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 ensureInjectContentScript(CONTENT_SCRIPT_PATH);
 
-watchForRebuild();
 void rebuild.then((note) => (note ? announceRebuild(note) : null));
 
 console.log('chrome exoskeleton service worker loaded');

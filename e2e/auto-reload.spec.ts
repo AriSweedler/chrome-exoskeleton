@@ -144,7 +144,10 @@ test.describe('the edit loop', () => {
             if (!tab?.id) throw new Error('no active tab');
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                func: () => document.dispatchEvent(new Event('exo:content-script-replaced')),
+                func: () =>
+                    document.dispatchEvent(
+                        new Event(`${chrome.runtime.id}:content-script-replaced`),
+                    ),
             });
         });
 
