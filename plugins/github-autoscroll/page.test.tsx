@@ -197,12 +197,13 @@ describe('github-autoscroll page module', () => {
             expect(autoscroll.isRunning()).toBe(false);
         });
 
-        it('leaves a, d and the z chords alone off PR pages, keeping gg / G', async () => {
+        it('leaves a, d, h and l alone off PR pages, keeping gg / G', async () => {
             await loadWithFiles('https://github.com/owner/repo/issues/1');
             window.scrollTo = vi.fn();
             expect(press('a').defaultPrevented).toBe(false);
             expect(press('d').defaultPrevented).toBe(false);
-            expect(press('z').defaultPrevented).toBe(false);
+            expect(press('h').defaultPrevented).toBe(false);
+            expect(press('l').defaultPrevented).toBe(false);
             expect(press('G', {shiftKey: true}).defaultPrevented).toBe(true);
             expect(press('g').defaultPrevented).toBe(true);
             expect(press('g').defaultPrevented).toBe(true);
@@ -214,27 +215,25 @@ describe('github-autoscroll page module', () => {
             expect(press('G', {shiftKey: true}).defaultPrevented).toBe(false);
         });
 
-        it('zc / zo / za fold the active file', async () => {
+        it('h closes and l opens the active file, saying which', async () => {
             const {autoscroll, cursor, files} = await loadWithFiles(PR_ROOT);
             autoscroll.start();
             const active = () => cursor.getActiveFile()!;
             expect(active().path).toBe('src/a.ts');
 
-            press('z');
-            press('c');
+            press('h');
             await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(true));
-            press('z');
-            press('o');
+            expect(toastText()).toContain('Closed src/a.ts');
+            press('h');
+            await vi.waitFor(() => expect(toastText()).toContain('src/a.ts is already closed'));
+            press('l');
             await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(false));
-            press('z');
-            press('a');
-            await vi.waitFor(() => expect(files.isCollapsed(active())).toBe(true));
+            expect(toastText()).toContain('Opened src/a.ts');
         });
 
         it('a fold key without an active file says so', async () => {
             await loadWithFiles(PR_ROOT);
-            press('z');
-            press('c');
+            press('h');
             await vi.waitFor(() => expect(toastText()).toContain('No active file'));
         });
 

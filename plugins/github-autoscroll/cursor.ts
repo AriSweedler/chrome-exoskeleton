@@ -10,7 +10,7 @@ import {coverHeight, pinToTop} from '@exo/plugins/github-autoscroll/scroll';
 
 /**
  * The review cursor: one file of the pull request is *active* — ringed in
- * light yellow, the target of the fold keys (za / zc / zo), the file
+ * light yellow, the target of the fold keys (h / l), the file
  * autoscroll pins to the top of the viewport. The active file is remembered
  * by GitHub's anchor id and re-resolved from the DOM on every use, so React
  * re-rendering the region cannot lose it.
@@ -137,9 +137,9 @@ export type FoldAction = 'open' | 'close' | 'toggle';
 export type FoldOutcome = 'opened' | 'closed' | 'unchanged' | 'no-active-file' | 'no-fold-control';
 
 /**
- * Fold the active file via GitHub's chevron (vim: zo / zc / za), then pin it
+ * Fold the active file via GitHub's chevron (h closes, l opens), then pin it
  * back to the top so a fold never leaves the viewport somewhere else. An
- * already-open `zo` (or already-closed `zc`) still pins: it is the way to
+ * already-open `l` (or already-closed `h`) still pins: it is the way to
  * bring the cursor back into view.
  */
 export function foldActiveFile(action: FoldAction): FoldOutcome {

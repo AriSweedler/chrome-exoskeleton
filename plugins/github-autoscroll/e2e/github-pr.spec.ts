@@ -9,7 +9,15 @@ import {
     waitForKeybindings,
     toastContainer,
 } from '@exo-e2e/helpers';
-import {PR_URL, PR_CHANGES_URL, PR_HTML, TOOLBAR_HEIGHT, PIN_GAP, anchor} from './fixture-pages';
+import {
+    PR_URL,
+    PR_CHANGES_URL,
+    PR_HTML,
+    PR_FILES,
+    TOOLBAR_HEIGHT,
+    PIN_GAP,
+    anchor,
+} from './fixture-pages';
 
 /**
  * These tests exercise the real content script in Chromium to prove what a
@@ -288,25 +296,21 @@ test.describe('the review cursor (Files changed)', () => {
         expect(await headerTop(page, THIRD)).toBeCloseTo(PINNED_TOP, 0);
     });
 
-    test('zc closes the active file, zo opens it, za toggles it — each time pinning it back', async ({
+    test('h closes the active file and l opens it — each time pinning it back', async ({
         context,
     }) => {
         const page = await openChanges(context);
         await waitForKeybindings(page);
 
-        await page.keyboard.press('z');
-        await page.keyboard.press('c');
+        await page.keyboard.press('h');
         await expect.poll(() => isCollapsed(page, FIRST)).toBe(true);
+        await expectToast(page, `Closed ${PR_FILES[0]!.path}`);
         await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
 
-        await page.keyboard.press('z');
-        await page.keyboard.press('o');
+        await page.keyboard.press('l');
         await expect.poll(() => isCollapsed(page, FIRST)).toBe(false);
+        await expectToast(page, `Opened ${PR_FILES[0]!.path}`);
         await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
-
-        await page.keyboard.press('z');
-        await page.keyboard.press('a');
-        await expect.poll(() => isCollapsed(page, FIRST)).toBe(true);
 
         // Folding never touched the viewed state.
         expect(await viewedStates(page)).toEqual([
@@ -317,8 +321,9 @@ test.describe('the review cursor (Files changed)', () => {
             'false',
             'false',
         ]);
-        // And z itself never reached the page.
-        expect(await seenKeys(page)).not.toContain('z');
+        // And the keys never reached the page.
+        expect(await seenKeys(page)).not.toContain('h');
+        expect(await seenKeys(page)).not.toContain('l');
     });
 
     test('the cursor follows the reader: scrolling moves the ring to the file under the reading line', async ({
