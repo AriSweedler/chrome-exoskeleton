@@ -15,6 +15,7 @@ import {
     viewedButton,
 } from '@exo/plugins/github-autoscroll/files';
 import {markAutoHiddenFilesViewed} from '@exo/plugins/github-autoscroll/auto-hidden';
+import {diffSettingsButton, toggleDiffLayout} from '@exo/plugins/github-autoscroll/layout';
 
 /**
  * Real-DOM tests: the files model against saved snapshots of actual PR
@@ -123,6 +124,26 @@ describe.skipIf(EXAMPLES.length === 0)('GitHub files model against real DOM snap
                 marked: unviewed,
                 alreadyViewed: hidden.length - unviewed,
             });
+        });
+
+        it('finds the diff view settings gear', () => {
+            installDom();
+            const gear = diffSettingsButton();
+            expect(gear).not.toBeNull();
+            expect(gear?.querySelector('svg.octicon-gear')).not.toBeNull();
+            expect(gear?.getAttribute('aria-haspopup')).toBe('true');
+        });
+
+        it('with the settings menu open, reads the Layout items and picks the other one', async () => {
+            installDom();
+            if (!name.includes('diff-settings-menu')) return; // snapshot without the menu open
+            const checked = Array.from(
+                document.querySelectorAll('[role="menuitemradio"][aria-checked="true"]'),
+            ).map((item) => item.textContent?.trim());
+            expect(checked).toContain('Unified');
+            // The DOM is inert, so the click changes nothing and the menu stays;
+            // the outcome still names the layout it went for.
+            expect(await toggleDiffLayout()).toEqual({kind: 'switched', to: 'split'});
         });
 
         it("reads GitHub's sticky offset as a number", () => {

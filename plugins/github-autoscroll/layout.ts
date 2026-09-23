@@ -48,11 +48,13 @@ interface LayoutItems {
 /** A menu item's label, without icons: its text, trimmed and case-folded. */
 const label = (item: Element) => (item.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-/** Whether a radio-like menu item is the selected one. */
+/**
+ * Whether a radio-like menu item is the selected one. By state attribute
+ * only: Primer renders the check icon in every radio item and shows it
+ * through aria-checked, so the icon's presence says nothing.
+ */
 const isChecked = (item: Element) =>
-    item.getAttribute('aria-checked') === 'true' ||
-    item.getAttribute('aria-selected') === 'true' ||
-    item.querySelector('svg.octicon-check') !== null;
+    item.getAttribute('aria-checked') === 'true' || item.getAttribute('aria-selected') === 'true';
 
 /** The two Layout items of an open diff view settings menu, if it is open. */
 function layoutItems(): LayoutItems | null {
