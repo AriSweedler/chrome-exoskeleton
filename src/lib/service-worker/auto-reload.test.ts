@@ -149,7 +149,7 @@ describe('auto-reload', () => {
     });
 
     describe('watchForRebuild', () => {
-        it('polls at once, on a 1 s interval and on its alarm', async () => {
+        it('polls at once and on each firing of its 1 s alarm, nothing else', async () => {
             const {chrome} = stubChrome();
             stubStamp({builtAt: 'v1'});
             watchForRebuild();
@@ -158,8 +158,8 @@ describe('auto-reload', () => {
             });
             await vi.advanceTimersByTimeAsync(0);
             expect(fetch).toHaveBeenCalledTimes(1);
-            await vi.advanceTimersByTimeAsync(2_000);
-            expect(fetch).toHaveBeenCalledTimes(3);
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(fetch).toHaveBeenCalledTimes(1); // no timer of its own
 
             const onAlarm = chrome.alarms.onAlarm.addListener.mock.calls[0][0] as (alarm: {
                 name: string;
@@ -167,7 +167,7 @@ describe('auto-reload', () => {
             onAlarm({name: 'other'});
             onAlarm({name: 'exo-rebuild-poll'});
             await vi.advanceTimersByTimeAsync(0);
-            expect(fetch).toHaveBeenCalledTimes(4);
+            expect(fetch).toHaveBeenCalledTimes(2);
         });
     });
 

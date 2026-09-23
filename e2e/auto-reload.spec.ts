@@ -6,20 +6,18 @@ import {openFixturePage, seenKeys, toastContainer, waitForKeybindings} from './h
 import {GDOC_URL, GDOC_HTML} from './fixture-pages';
 
 /**
- * The edit loop's two halves, each proven in a real Chromium:
+ * The edit loop, end to end in a real Chromium: a new build stamp in the
+ * extension's directory makes the worker reload the extension; the fresh
+ * worker injects the new content script into the open tabs, where it
+ * retires the copy already there; and it says so once, in the page being
+ * looked at. No page reloads, no dev server — exactly what `exo build` (or a
+ * save under `exo dev`) does to a loaded extension.
  *
- *   1. A new build stamp in the extension's directory makes the worker
- *      reload the extension (`exo build`, or a save under `exo dev`).
- *   2. A fresh copy of the content script arriving in a page retires the
- *      copy already there, so the page never has to reload and one copy
- *      answers the keyboard.
- *
- * They are proven separately because Playwright loads the extension with
- * --load-extension, and Chromium does not bring a command-line extension
- * back after chrome.runtime.reload() (its URLs answer ERR_BLOCKED_BY_CLIENT
- * afterwards). A Load-unpacked extension — how dist/ is loaded for real —
- * comes back the way the card's Reload button brings it back; that half is
- * Chrome's, not ours.
+ * One thing the harness must do that a real profile already has: Developer
+ * mode. Load unpacked implies it, but Playwright's fresh profile has it off,
+ * and since Chrome 134 an unpacked extension that reloads into a profile
+ * without it is left disabled (extension_management.cc,
+ * IsAllowedByUnpackedDeveloperModePolicy).
  */
 
 const dist = path.resolve(process.env.EXO_DIST ?? 'dist');
@@ -44,29 +42,88 @@ const baselineTaken = (worker: Worker) =>
             .then((stored) => (stored.exoBuildStamp as string | undefined) ?? null),
     );
 
+/** Flip the profile's Developer mode switch, as Load unpacked would have. */
+async function enableDeveloperMode(context: BrowserContext): Promise<void> {
+    const page = await context.newPage();
+    await page.goto('chrome://extensions');
+    await page.evaluate(
+        () =>
+            new Promise<void>((resolve) => {
+                const api = (
+                    chrome as unknown as {
+                        developerPrivate: {
+                            updateProfileConfiguration(
+                                update: {inDeveloperMode: boolean},
+                                callback: () => void,
+                            ): void;
+                        };
+                    }
+                ).developerPrivate;
+                api.updateProfileConfiguration({inDeveloperMode: true}, () => resolve());
+            }),
+    );
+    await page.close();
+}
+
 test.describe('the edit loop', () => {
-    test('a new build stamp makes the worker reload the extension within a second or two', async ({
+    let original: string;
+
+    test.beforeEach(() => {
+        original = fs.readFileSync(stampPath, 'utf8');
+    });
+
+    test.afterEach(() => {
+        fs.writeFileSync(stampPath, original);
+    });
+
+    test('a new build goes live: the extension reloads, the pages keep their state, one toast', async ({
         context,
     }) => {
-        const original = fs.readFileSync(stampPath, 'utf8');
-        try {
-            await openFixturePage(context, GDOC_URL, GDOC_HTML);
-            const worker = await serviceWorker(context);
-            await expect.poll(() => baselineTaken(worker)).not.toBeNull();
+        await enableDeveloperMode(context);
 
-            // chrome.runtime.reload() ends this worker: that is the observable.
-            const ended = worker.waitForEvent('close');
-            const started = Date.now();
-            fs.writeFileSync(stampPath, JSON.stringify({builtAt: new Date().toISOString()}));
-            await ended;
-            // ~1.5 s on an idle machine (a 1 s poll plus the read); the bound
-            // only guards against a poll that never runs.
-            const latency = Date.now() - started;
-            console.log(`[auto-reload] stamp → runtime.reload() in ${latency} ms`);
-            expect(latency).toBeLessThan(10_000);
-        } finally {
-            fs.writeFileSync(stampPath, original);
-        }
+        // Two tabs with the content script; the second is the one being looked at.
+        const background = await openFixturePage(context, GDOC_URL, GDOC_HTML);
+        const page = await openFixturePage(context, GDOC_URL, GDOC_HTML);
+        await page.bringToFront();
+        await waitForKeybindings(page); // the first copy is live
+        let loads = 0;
+        background.on('load', () => loads++);
+        page.on('load', () => loads++);
+
+        const worker = await serviceWorker(context);
+        await expect.poll(() => baselineTaken(worker)).not.toBeNull();
+
+        const ended = worker.waitForEvent('close');
+        const revived = context.waitForEvent('serviceworker');
+        const started = Date.now();
+        fs.writeFileSync(stampPath, JSON.stringify({builtAt: new Date().toISOString()}));
+
+        // chrome.runtime.reload(): the old worker ends, a new one starts.
+        await ended;
+        const reloadMs = Date.now() - started;
+        await revived;
+
+        // The new build announces itself once, in the active page…
+        await expect(toastContainer(page)).toContainText('New build loaded', {timeout: 10_000});
+        console.log(
+            `[auto-reload] stamp → runtime.reload() ${reloadMs} ms → new build live ${Date.now() - started} ms`,
+        );
+        // …without reloading any page, and not in the background tab.
+        await page.waitForTimeout(300);
+        expect(loads).toBe(0);
+        expect(
+            await background.evaluate(
+                () => document.getElementById('exo-notification-container')?.textContent ?? '',
+            ),
+        ).not.toContain('New build loaded');
+
+        // The old copy of the content script let go: one copy answers the
+        // keyboard — one overlay, one toast container — and the page itself
+        // still never sees an exo key.
+        await page.keyboard.press('Shift+Slash');
+        await expect(page.getByText('Keyboard Shortcuts')).toHaveCount(1);
+        await expect(toastContainer(page)).toHaveCount(1);
+        expect(await seenKeys(page)).not.toContain('?');
     });
 
     test('the copy of the content script in a page lets go when a newer copy announces itself', async ({
@@ -80,10 +137,8 @@ test.describe('the edit loop', () => {
         await expect(toastContainer(page)).toHaveCount(1);
 
         // What a fresh copy does first (lib/lifecycle.ts): announce itself on
-        // the document. Re-injecting the same file here would be a no-op —
-        // the isolated world's module map already holds it; a real reload
-        // gives the new copy a new world — so fire the announcement itself,
-        // from the extension's world, as the new copy would.
+        // the document. Fire that announcement from the extension's world, as
+        // the new copy would.
         await worker.evaluate(async () => {
             const [tab] = await chrome.tabs.query({active: true, lastFocusedWindow: true});
             if (!tab?.id) throw new Error('no active tab');

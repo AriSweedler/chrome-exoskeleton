@@ -11,9 +11,10 @@ exo status         # what is mounted, from where, and how stale dist/ is
 Load `dist/` once as an unpacked extension (`chrome://extensions`, Developer
 mode, Load unpacked). That is the last time the extension card is needed:
 every build afterwards — `exo build`, or a save under `exo dev` — is picked up
-by the loaded extension within about a second. The only exception is a build
-whose manifest Chrome rejects, which disables the extension until it is fixed
-and reloaded by hand.
+by the loaded extension within about a second. Two exceptions: a build whose
+manifest Chrome rejects disables the extension until it is fixed and reloaded
+by hand, and Developer mode must stay on (since Chrome 134 an unpacked
+extension that reloads into a profile without it is left disabled).
 
 How: every build writes `dist/build-stamp.json`; Chrome reads an unpacked
 extension's files from disk, so the service worker polls its own copy of the

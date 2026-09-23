@@ -17,7 +17,7 @@ import {Tabs} from '@exo/lib/service-worker/tabs';
 
 const STAMP_FILE = 'build-stamp.json';
 const ALARM_NAME = 'exo-rebuild-poll';
-/** Unpacked extensions are exempt from the 30 s alarm floor, so this is 1 s there. */
+/** The alarm floor for an unpacked extension (alarms_api_constants.h, kDevDelayMinimum). */
 const POLL_SECONDS = 1;
 /** storage.session: the stamp this worker last saw. Cleared with the extension. */
 const BASELINE_KEY = 'exoBuildStamp';
@@ -26,12 +26,15 @@ const REBUILD_KEY = 'exoRebuild';
 /** A note older than this belongs to some earlier session; ignore it. */
 const REBUILD_TTL_MS = 15_000;
 /**
- * Chromium terminates an extension that reloads itself more than 5 times in
- * 10 seconds ("reloaded too frequently"). A watch build can land several
- * times in quick succession, so reloads are spaced: a stamp that changes
- * within this gap of the last reload waits for a later reading.
+ * Chromium terminates an unpacked extension that reloads itself 31 times in
+ * a row with under a second between reloads (chrome_runtime_api_delegate.cc:
+ * kUnpackedFastReloadTime / kUnpackedFastReloadCount; packed extensions get
+ * 6 within 10 s). One reload per build cannot chain like that, but a watch
+ * build can emit two builds back to back, so reloads are spaced: a stamp that
+ * changes within this gap of the last reload waits for a later reading, and
+ * the chain never starts.
  */
-export const MIN_RELOAD_GAP_MS = 2_500;
+export const MIN_RELOAD_GAP_MS = 1_500;
 /** storage.local: when the last self-reload was requested. */
 const LAST_RELOAD_KEY = 'exoLastReloadAt';
 /** How long the page under test gets for its fresh copy to come up before another page is tried. */
@@ -61,21 +64,17 @@ export async function readBuildStamp(): Promise<BuildStamp | null> {
     }
 }
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-
 /**
- * Start watching the stamp. The alarm wakes a sleeping worker (and keeps a
- * live one awake); the interval gives 1 s latency even where alarms are
- * floored at 30 s. Idempotent per worker lifetime.
+ * Start watching the stamp: one reading now, then one per alarm. Every alarm
+ * firing is an extension event, which resets the worker's 30 s idle timer,
+ * so the worker stays resident and the cadence is the alarm's alone (a timer
+ * would not keep it alive).
  */
 export function watchForRebuild(): void {
     chrome.alarms.onAlarm.addListener((alarm) => {
         if (alarm.name === ALARM_NAME) void pollOnce();
     });
     void chrome.alarms.create(ALARM_NAME, {periodInMinutes: POLL_SECONDS / 60});
-    if (pollTimer === null) {
-        pollTimer = setInterval(() => void pollOnce(), POLL_SECONDS * 1000);
-    }
     void pollOnce();
 }
 
