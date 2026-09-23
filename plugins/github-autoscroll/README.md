@@ -6,7 +6,7 @@ One file of the pull request is **active**: ringed in soft light yellow. It
 is the review cursor. It follows what you are looking at as you scroll (the
 file just under the sticky chrome), marking a file Viewed moves it to the
 next unviewed file, `J` / `K` step it between unviewed files, and `h` / `l`
-and `R` act on it.
+and `v` act on it.
 
 | key        | where             | does                                                                                                                                                                                    |
 | ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -263,22 +263,22 @@ describe('github-autoscroll page module', () => {
             await vi.waitFor(() => expect(cursor.getActiveFile()?.path).toBe('src/a.ts'));
         });
 
-        it('R toggles Viewed on the active file and autoscroll carries the cursor on', async () => {
+        it('v toggles Viewed on the active file and autoscroll carries the cursor on', async () => {
             const {autoscroll, cursor, files} = await loadWithFiles(PR_ROOT);
             autoscroll.start();
             const a = () => files.fileByAnchor(anchorFor('src/a.ts'))!;
             expect(cursor.getActiveFile()?.path).toBe('src/a.ts');
-            press('R', {shiftKey: true});
+            press('v');
             await vi.waitFor(() => expect(files.isViewed(a())).toBe(true));
             await vi.waitFor(() => expect(cursor.getActiveFile()?.path).toBe('gen/alpha.json'));
-            // R on gen/alpha.json (unviewed) marks it; the cursor moves to src/b.ts.
-            press('R', {shiftKey: true});
+            // v on gen/alpha.json (unviewed) marks it; the cursor moves to src/b.ts.
+            press('v');
             await vi.waitFor(() => expect(cursor.getActiveFile()?.path).toBe('src/b.ts'));
             // Unmarking does not move the cursor.
             autoscroll.stop();
             autoscroll.start();
             cursor.setActiveFile(a());
-            press('R', {shiftKey: true});
+            press('v');
             await vi.waitFor(() => expect(files.isViewed(a())).toBe(false));
             expect(cursor.getActiveFile()?.path).toBe('src/a.ts');
         });

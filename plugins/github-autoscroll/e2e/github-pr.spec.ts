@@ -365,7 +365,7 @@ test.describe('the review cursor (Files changed)', () => {
         await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     });
 
-    test('J / K step between unviewed files; R toggles Viewed and carries the cursor on', async ({
+    test('J / K step between unviewed files; v toggles Viewed and carries the cursor on', async ({
         context,
     }) => {
         const page = await openChanges(context);
@@ -379,14 +379,14 @@ test.describe('the review cursor (Files changed)', () => {
         await page.keyboard.press('Shift+K');
         await expect.poll(() => activeAnchor(page)).toBe(FIRST);
 
-        // R marks the active file viewed; autoscroll moves on to src/index.ts.
-        await page.keyboard.press('Shift+R');
+        // v marks the active file viewed; autoscroll moves on to src/index.ts.
+        await page.keyboard.press('v');
         await expect
             .poll(() => viewedStates(page))
             .toEqual(['true', 'true', 'false', 'false', 'false', 'false']);
         await expect.poll(() => activeAnchor(page)).toBe(THIRD);
-        // R again on the new active file toggles it viewed too, and the cursor moves on.
-        await page.keyboard.press('Shift+R');
+        // v again on the new active file toggles it viewed too, and the cursor moves on.
+        await page.keyboard.press('v');
         await expect
             .poll(() => viewedStates(page))
             .toEqual(['true', 'true', 'true', 'false', 'false', 'false']);

@@ -91,7 +91,7 @@ async function autorun(): Promise<void> {
     startAutoscroll();
 }
 
-// --- the cursor: J / K / R --------------------------------------------------
+// --- the cursor: J / K / v --------------------------------------------------
 
 /** J / K: step to the next / previous unviewed file. Starts autoscroll if it is off. */
 function stepCursor(direction: 'next' | 'previous'): void {
@@ -103,7 +103,7 @@ function stepCursor(direction: 'next' | 'previous'): void {
 }
 
 /**
- * R: toggle Viewed on the active file. Marking it viewed is a flip like any
+ * v: toggle Viewed on the active file. Marking it viewed is a flip like any
  * other, so autoscroll carries the cursor on to the next unviewed file.
  */
 function toggleViewedOnActive(): void {
@@ -266,8 +266,7 @@ function registerKeybindings(): void {
             when: onPRPage,
         },
         {
-            key: 'R',
-            modifiers: {shift: true},
+            key: 'v',
             description: 'Toggle Viewed on the active file (viewed → on to the next)',
             handler: toggleViewedOnActive,
             context: REVIEW_CONTEXT,
