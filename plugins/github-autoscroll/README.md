@@ -2,9 +2,11 @@
 
 Keyboard help for reviewing pull requests on github.com.
 
-One file of the pull request is **active**: ringed in light yellow. It is the
-review cursor — autoscroll moves it, the fold keys act on it, and clicking
-anywhere in a file makes that file active.
+One file of the pull request is **active**: ringed in soft light yellow. It
+is the review cursor. It follows what you are looking at as you scroll (the
+file just under the sticky chrome), marking a file Viewed moves it to the
+next unviewed file, `J` / `K` step it between unviewed files, and the fold
+keys and `R` act on it.
 
 | key                | where             | does                                                                                                                                                                                    |
 | ------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

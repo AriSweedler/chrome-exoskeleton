@@ -11,6 +11,9 @@ import {
     type FixtureFile,
 } from '@exo/plugins/github-autoscroll/test-dom';
 
+type Rect = ReturnType<HTMLElement['getBoundingClientRect']>;
+const rect = (partial: Partial<Rect>): Rect => partial as Rect;
+
 const FILES: FixtureFile[] = [
     {path: 'a.ts'},
     {path: 'b.ts', viewed: true},
@@ -161,17 +164,6 @@ describe('autoscroll', () => {
         expect(onAdvance).toHaveBeenCalledTimes(1);
     });
 
-    it('a click anywhere in a file makes it the active one', () => {
-        autoscroll.start();
-        const d = fileByAnchor(anchorFor('d.ts'))!;
-        d.region
-            .querySelector('.diff-content')!
-            .dispatchEvent(new MouseEvent('click', {bubbles: true}));
-        expect(cursor.getActiveFile()?.path).toBe('d.ts');
-        document.body.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-        expect(cursor.getActiveFile()?.path).toBe('d.ts');
-    });
-
     it('stop drops the cursor and stops watching', async () => {
         autoscroll.start({onAdvance});
         autoscroll.stop();
@@ -182,6 +174,65 @@ describe('autoscroll', () => {
         await settle();
         expect(onAdvance).not.toHaveBeenCalled();
         autoscroll.stop(); // idempotent
+    });
+
+    it('follows the reader: on scroll the cursor moves to the file under the reading line', async () => {
+        autoscroll.start();
+        expect(cursor.getActiveFile()?.path).toBe('a.ts');
+        // Scrolled so that a.ts is above the viewport and b.ts spans the top.
+        const tops: Record<string, [number, number]> = {
+            'a.ts': [-500, -100],
+            'b.ts': [-100, 300],
+            'c.ts': [300, 700],
+            'd.ts': [700, 1100],
+        };
+        for (const file of getFiles()) {
+            const [top, bottom] = tops[file.path]!;
+            file.region.getBoundingClientRect = () => rect({top, bottom, left: 0, width: 800});
+        }
+        window.dispatchEvent(new Event('scroll'));
+        window.dispatchEvent(new Event('scroll')); // coalesced into one reading
+        await vi.advanceTimersByTimeAsync(20);
+        expect(cursor.getActiveFile()?.path).toBe('b.ts');
+
+        // Past the last file: the last file stays the cursor.
+        for (const file of getFiles()) {
+            file.region.getBoundingClientRect = () =>
+                rect({top: -900, bottom: -800, left: 0, width: 800});
+        }
+        expect(autoscroll.followViewport()?.path).toBe('d.ts');
+        expect(cursor.getActiveFile()?.path).toBe('d.ts');
+
+        // Stopped: scrolling moves nothing.
+        autoscroll.stop();
+        window.dispatchEvent(new Event('scroll'));
+        await vi.advanceTimersByTimeAsync(20);
+        expect(cursor.getActiveFile()).toBeNull();
+    });
+
+    it('moveCursor steps to the previous unviewed file, wrapping at the top', () => {
+        autoscroll.start();
+        const at = (path: string) => fileByAnchor(anchorFor(path))!;
+        // From d.ts back: c.ts (b.ts is viewed, skipped).
+        expect(autoscroll.moveCursor(at('d.ts'), 'previous')).toMatchObject({
+            kind: 'moved',
+            wrapped: false,
+        });
+        expect(cursor.getActiveFile()?.path).toBe('c.ts');
+        expect(autoscroll.moveCursor(at('c.ts'), 'previous').kind).toBe('moved');
+        expect(cursor.getActiveFile()?.path).toBe('a.ts');
+        // Before a.ts there is nothing: wrap to the last unviewed, d.ts.
+        expect(autoscroll.moveCursor(at('a.ts'), 'previous')).toMatchObject({
+            kind: 'moved',
+            wrapped: true,
+        });
+        expect(cursor.getActiveFile()?.path).toBe('d.ts');
+        // Without an active file, previous means the last unviewed file.
+        expect(autoscroll.moveCursor(null, 'previous').kind).toBe('moved');
+        expect(cursor.getActiveFile()?.path).toBe('d.ts');
+        // Forward is advanceFrom.
+        expect(autoscroll.moveCursor(at('a.ts'), 'next').kind).toBe('moved');
+        expect(cursor.getActiveFile()?.path).toBe('c.ts');
     });
 
     it('advanceFrom(null) starts from the top', () => {

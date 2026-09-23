@@ -1,12 +1,12 @@
-import {
-    type PRFile,
-    fileByAnchor,
-    fileContaining,
-    getFiles,
-    isViewed,
-} from '@exo/plugins/github-autoscroll/files';
+import {type PRFile, fileByAnchor, getFiles, isViewed} from '@exo/plugins/github-autoscroll/files';
 import {nextFrame} from '@exo/plugins/github-autoscroll/frame';
-import {clearActiveFile, pinActiveFile, setActiveFile} from '@exo/plugins/github-autoscroll/cursor';
+import {
+    clearActiveFile,
+    getActiveAnchor,
+    pinActiveFile,
+    readingLine,
+    setActiveFile,
+} from '@exo/plugins/github-autoscroll/cursor';
 
 /**
  * Autoscroll: when a file is marked Viewed, the cursor moves to the next
@@ -18,6 +18,10 @@ import {clearActiveFile, pinActiveFile, setActiveFile} from '@exo/plugins/github
  * flip and a full re-render alike, and stays quiet for a file GitHub renders
  * late in an already-viewed state (server truth, not a click). Programmatic
  * marks (the `d` sweep) announce themselves through ignoreNextViewedFlip.
+ *
+ * Between flips the cursor follows the reader: on every scroll it moves to
+ * the file under the reading line, so the ring always marks the file being
+ * looked at.
  */
 
 export type AdvanceOutcome = {kind: 'moved'; file: PRFile; wrapped: boolean} | {kind: 'all-viewed'};
@@ -34,7 +38,8 @@ interface Session {
     /** Anchors whose next unviewed→viewed flip is programmatic, with expiry. */
     ignored: Map<string, number>;
     cancelTick: (() => void) | null;
-    onClick: (event: Event) => void;
+    cancelFollow: (() => void) | null;
+    onScroll: () => void;
     onAdvance: ((outcome: AdvanceOutcome) => void) | undefined;
 }
 
@@ -63,10 +68,14 @@ export function start(options: AutoscrollOptions = {}): boolean {
         known: new Map(files.map((file) => [file.anchor, isViewed(file)])),
         ignored: new Map(),
         cancelTick: null,
-        onClick: (event) => {
-            // A click anywhere in a file makes it the active one.
-            const file = fileContaining(event.target);
-            if (file) setActiveFile(file);
+        cancelFollow: null,
+        onScroll: () => {
+            // One reading per frame, however many scroll events arrive.
+            if (current.cancelFollow) return;
+            current.cancelFollow = nextFrame(() => {
+                current.cancelFollow = null;
+                followViewport();
+            });
         },
         onAdvance: options.onAdvance,
     };
@@ -76,7 +85,7 @@ export function start(options: AutoscrollOptions = {}): boolean {
         attributes: true,
         attributeFilter: ['aria-pressed', 'class'],
     });
-    document.addEventListener('click', current.onClick, true);
+    window.addEventListener('scroll', current.onScroll, {passive: true});
     session = current;
 
     placeInitialCursor(files);
@@ -102,9 +111,27 @@ export function stop(): void {
     if (!session) return;
     session.observer.disconnect();
     session.cancelTick?.();
-    document.removeEventListener('click', session.onClick, true);
+    session.cancelFollow?.();
+    window.removeEventListener('scroll', session.onScroll);
     session = null;
     clearActiveFile();
+}
+
+/**
+ * Move the cursor to the file under the reading line — the first file whose
+ * bottom edge is below it, or the last file when the page is scrolled past
+ * them all. Returns that file (null on a page without files).
+ */
+export function followViewport(): PRFile | null {
+    const files = getFiles();
+    const first = files[0];
+    if (!first) return null;
+    const line = readingLine(first.region);
+    const target =
+        files.find((file) => file.region.getBoundingClientRect().bottom > line) ??
+        files[files.length - 1]!;
+    if (target.anchor !== getActiveAnchor()) setActiveFile(target);
+    return target;
 }
 
 /**
@@ -137,7 +164,10 @@ function tick(current: Session): void {
         if (consumeIgnore(current, file.anchor)) continue;
         flipped = file; // in a batch, the last flip in document order leads
     }
-    if (flipped) current.onAdvance?.(advanceFrom(flipped));
+    if (!flipped) return;
+    // Advance first, tell second: the move must not hinge on a listener.
+    const outcome = advanceFrom(flipped);
+    current.onAdvance?.(outcome);
 }
 
 function consumeIgnore(current: Session, anchor: string): boolean {
@@ -153,15 +183,33 @@ function consumeIgnore(current: Session, anchor: string): boolean {
  * it. Clears the cursor when every file is viewed.
  */
 export function advanceFrom(file: PRFile | null): AdvanceOutcome {
+    return moveCursor(file, 'next');
+}
+
+/**
+ * Step the cursor to the next or previous unviewed file relative to `file`
+ * (the active file when null: J / K), wrapping at either end, and pin it.
+ * Clears the cursor when every file is viewed.
+ */
+export function moveCursor(file: PRFile | null, direction: 'next' | 'previous'): AdvanceOutcome {
     const files = getFiles();
-    const start = file ? files.findIndex((candidate) => candidate.anchor === file.anchor) + 1 : 0;
-    const below = files.slice(start).find((candidate) => !isViewed(candidate));
-    const next = below ?? files.slice(0, start).find((candidate) => !isViewed(candidate));
-    if (!next) {
+    const unviewed = (candidates: PRFile[]) => candidates.filter((c) => !isViewed(c));
+    const index = file ? files.findIndex((candidate) => candidate.anchor === file.anchor) : -1;
+    let ahead: PRFile[];
+    let behind: PRFile[];
+    if (direction === 'next') {
+        ahead = unviewed(files.slice(index + 1));
+        behind = unviewed(files.slice(0, index + 1));
+    } else {
+        ahead = unviewed(index < 0 ? files : files.slice(0, index)).reverse();
+        behind = unviewed(index < 0 ? [] : files.slice(index)).reverse();
+    }
+    const target = ahead[0] ?? behind[0];
+    if (!target) {
         clearActiveFile();
         return {kind: 'all-viewed'};
     }
-    setActiveFile(next);
+    setActiveFile(target);
     pinActiveFile();
-    return {kind: 'moved', file: next, wrapped: below === undefined};
+    return {kind: 'moved', file: target, wrapped: ahead.length === 0};
 }

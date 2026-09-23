@@ -1,6 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import {
-    ACTIVE_FILE_BORDER,
     clearActiveFile,
     foldActiveFile,
     getActiveAnchor,
@@ -16,7 +15,10 @@ import {
     renderFilesList,
 } from '@exo/plugins/github-autoscroll/test-dom';
 
-const activeStyle = () => document.getElementById('exo-github-active-file');
+type Rect = ReturnType<HTMLElement['getBoundingClientRect']>;
+const rect = (partial: Partial<Rect>): Rect => partial as Rect;
+
+const ring = () => document.getElementById('exo-github-active-file');
 
 describe('the active file', () => {
     let uninstall: () => void;
@@ -37,29 +39,39 @@ describe('the active file', () => {
         document.body.innerHTML = '';
     });
 
-    it('is painted through one CSS rule on its anchor id, in light yellow', () => {
-        expect(activeStyle()).toBeNull();
+    it('is painted as one overlay on the body, laid over the file, glowing in and out', () => {
+        expect(ring()).toBeNull();
         const [a] = getFiles();
+        a.region.getBoundingClientRect = () => rect({top: 100, left: 20, width: 600, height: 300});
         setActiveFile(a);
         expect(getActiveAnchor()).toBe(anchorFor('a.ts'));
         expect(getActiveFile()?.path).toBe('a.ts');
-        const css = activeStyle()?.textContent ?? '';
-        expect(css).toContain(`[id="${anchorFor('a.ts')}"] { position: relative; }`);
-        expect(css).toContain(`[id="${anchorFor('a.ts')}"]::after`);
-        expect(css).toContain(`border: 2px solid ${ACTIVE_FILE_BORDER}`);
-        expect(css).toContain('inset 0 0 14px');
-        expect(css).toContain('pointer-events: none');
+        const el = ring()!;
+        expect(el.parentElement).toBe(document.body);
+        expect(el.style.position).toBe('absolute');
+        expect(el.style.pointerEvents).toBe('none');
+        expect(el.style.borderWidth).toBe('1px');
+        expect(el.style.borderStyle).toBe('solid');
+        expect(el.style.borderColor).toBe('rgba(255, 240, 77, 0.9)'); // hsla(55, 100%, 65%, 0.9)
+        expect(el.style.boxShadow).toContain('inset');
+        expect(el.style.boxShadow.indexOf('inset')).toBeGreaterThan(0); // an outer glow comes first
+        expect({
+            top: el.style.top,
+            left: el.style.left,
+            width: el.style.width,
+            height: el.style.height,
+        }).toEqual({top: '100px', left: '20px', width: '600px', height: '300px'});
     });
 
-    it('moves the rule rather than stacking rules, and clears it', () => {
+    it('moves the one overlay rather than adding another, and removes it when cleared', () => {
         const [a, , c] = getFiles();
+        c.region.getBoundingClientRect = () => rect({top: 900, left: 20, width: 600, height: 50});
         setActiveFile(a);
         setActiveFile(c);
         expect(document.querySelectorAll('#exo-github-active-file')).toHaveLength(1);
-        expect(activeStyle()?.textContent).toContain(anchorFor('c.ts'));
-        expect(activeStyle()?.textContent).not.toContain(anchorFor('a.ts'));
+        expect(ring()?.style.top).toBe('900px');
         clearActiveFile();
-        expect(activeStyle()).toBeNull();
+        expect(ring()).toBeNull();
         expect(getActiveFile()).toBeNull();
     });
 

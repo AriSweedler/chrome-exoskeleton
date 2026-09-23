@@ -14,9 +14,10 @@ import {
     foldActiveFile,
     getActiveFile,
 } from '@exo/plugins/github-autoscroll/cursor';
-import {getFiles} from '@exo/plugins/github-autoscroll/files';
+import {getFiles, isViewed, setViewed} from '@exo/plugins/github-autoscroll/files';
 import {
     scrollPageDown,
+    scrollStep,
     scrollToPageBottom,
     scrollToPageTop,
 } from '@exo/plugins/github-autoscroll/scroll';
@@ -88,6 +89,44 @@ async function autorun(): Promise<void> {
     const rendered = await waitFor(() => getFiles().length > 0, {intervalMs: 250, attempts: 40});
     if (!rendered || autoscroll.isRunning() || !isGitHubPRChangesPage(window.location.href)) return;
     startAutoscroll();
+}
+
+// --- the cursor: J / K / R --------------------------------------------------
+
+/** J / K: step to the next / previous unviewed file. Starts autoscroll if it is off. */
+function stepCursor(direction: 'next' | 'previous'): void {
+    if (!autoscroll.isRunning() && !startAutoscroll()) {
+        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+        return;
+    }
+    announceAdvance(autoscroll.moveCursor(getActiveFile(), direction));
+}
+
+/**
+ * R: toggle Viewed on the active file. Marking it viewed is a flip like any
+ * other, so autoscroll carries the cursor on to the next unviewed file.
+ */
+function toggleViewedOnActive(): void {
+    if (!autoscroll.isRunning() && !startAutoscroll()) {
+        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+        return;
+    }
+    const file = getActiveFile();
+    if (!file) {
+        Notifications.show({
+            message: 'No active file',
+            type: NotificationType.Error,
+            replace: true,
+        });
+        return;
+    }
+    if (!setViewed(file, !isViewed(file))) {
+        Notifications.show({
+            message: 'The active file has no Viewed toggle',
+            type: NotificationType.Error,
+            replace: true,
+        });
+    }
 }
 
 // --- folds ----------------------------------------------------------------
@@ -181,6 +220,46 @@ function registerKeybindings(): void {
             key: 'a',
             description: 'Toggle PR autoscroll',
             handler: toggleAutoscroll,
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'j',
+            description: 'Scroll down a step',
+            handler: () => scrollStep(1),
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+            silent: true,
+        },
+        {
+            key: 'k',
+            description: 'Scroll up a step',
+            handler: () => scrollStep(-1),
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+            silent: true,
+        },
+        {
+            key: 'J',
+            modifiers: {shift: true},
+            description: 'Next unviewed file',
+            handler: () => stepCursor('next'),
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'K',
+            modifiers: {shift: true},
+            description: 'Previous unviewed file',
+            handler: () => stepCursor('previous'),
+            context: REVIEW_CONTEXT,
+            when: onPRPage,
+        },
+        {
+            key: 'R',
+            modifiers: {shift: true},
+            description: 'Toggle Viewed on the active file (viewed → on to the next)',
+            handler: toggleViewedOnActive,
             context: REVIEW_CONTEXT,
             when: onPRPage,
         },

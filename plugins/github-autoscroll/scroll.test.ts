@@ -3,6 +3,7 @@ import {
     DEFAULT_SETTLE_MS,
     coverHeight,
     pinToTop,
+    restingTop,
     scrollPageDown,
     scrollToPageBottom,
     scrollToPageTop,
@@ -91,6 +92,65 @@ describe('coverHeight', () => {
 
         expect(coverHeight(t)).toBe(0);
         document.body.style.position = '';
+    });
+});
+
+describe('restingTop', () => {
+    afterEach(() => {
+        document.body.innerHTML = '';
+        // @ts-expect-error jsdom has no elementsFromPoint; tests install and remove one
+        delete document.elementsFromPoint;
+    });
+
+    /** A sticky toolbar of height 48 whose top edge is at `top` (stuck once at 0). */
+    function toolbar(top: number): HTMLElement {
+        const bar = box(top);
+        bar.style.position = 'sticky';
+        bar.style.top = '0px';
+        bar.getBoundingClientRect = () => rect({top, bottom: top + 48});
+        return bar;
+    }
+
+    it('rests a gap below chrome that is stuck at the top', () => {
+        const bar = toolbar(0);
+        const target = box(6);
+        document.elementsFromPoint = () => [bar, document.body];
+        expect(restingTop(target, 6)).toBe(54);
+    });
+
+    it('rests where a sticky element in flow right above it will sit once stuck — no chase', () => {
+        const bar = toolbar(6); // in flow: its top is below its sticky offset
+        const target = box(54);
+        document.elementsFromPoint = (_x: number, y: number) =>
+            y < 6 ? [document.body] : [bar, document.body];
+        // The top edge reports no cover (6 would be wanted); the toolbar right
+        // above the header rules: offset 0 + height 48 + gap 6 = 54, exactly
+        // where it is. Nothing to correct.
+        expect(restingTop(target, 6)).toBe(54);
+    });
+
+    it('from the top of the page, the same rule still asks for the scroll', () => {
+        const bar = toolbar(380); // far down the page, header right under it
+        const target = box(428);
+        document.elementsFromPoint = (_x: number, y: number) =>
+            y < 380 ? [document.body] : [bar, document.body];
+        expect(restingTop(target, 6)).toBe(54);
+    });
+
+    it('a layout gap below an in-flow sticky element leaves only the top-edge reading', () => {
+        const bar = toolbar(6);
+        const target = box(70); // 16 px of layout gap below the toolbar
+        document.elementsFromPoint = (_x: number, y: number) =>
+            y >= 6 && y < 54 ? [bar, document.body] : [document.body];
+        expect(restingTop(target, 6)).toBe(6);
+    });
+
+    it('ignores a neighbor that is not sticky, and honors minCover', () => {
+        const neighbor = box(30);
+        const target = box(54);
+        document.elementsFromPoint = () => [neighbor, document.body];
+        expect(restingTop(target, 6)).toBe(6);
+        expect(restingTop(target, 6, {minCover: 40})).toBe(46);
     });
 });
 

@@ -6,26 +6,33 @@ import {
     isInsideFile,
     setCollapsed,
 } from '@exo/plugins/github-autoscroll/files';
-import {pinToTop} from '@exo/plugins/github-autoscroll/scroll';
+import {coverHeight, pinToTop} from '@exo/plugins/github-autoscroll/scroll';
 
 /**
  * The review cursor: one file of the pull request is *active* — ringed in
  * light yellow, the target of the fold keys (za / zc / zo), the file
  * autoscroll pins to the top of the viewport. The active file is remembered
- * by GitHub's anchor id, and painted through one CSS rule on that id: a rule
- * survives React re-rendering the region, a class we add to it would not.
+ * by GitHub's anchor id and re-resolved from the DOM on every use, so React
+ * re-rendering the region cannot lose it.
+ *
+ * The ring is one overlay element on the page body, laid over the active
+ * file's box. It lives outside GitHub's file wrappers on purpose: they use
+ * content-visibility: auto, whose paint containment clips anything drawn
+ * outside them, so a ring inside them could never glow outward.
  */
 
-const STYLE_ID = 'exo-github-active-file';
-/** The cursor color: a light yellow line with a soft inner glow. */
-export const ACTIVE_FILE_BORDER = 'hsla(55, 100%, 72%, 1)';
-export const ACTIVE_FILE_GLOW = 'hsla(55, 100%, 72%, 0.4)';
+const OVERLAY_ID = 'exo-github-active-file';
+/** The cursor color: a thin light-yellow line, glowing softly in and out. */
+export const ACTIVE_FILE_BORDER = 'hsla(55, 100%, 65%, 0.9)';
+export const ACTIVE_FILE_GLOW = 'hsla(55, 100%, 70%, 0.45)';
 /** Space kept between sticky page chrome and the pinned header, so the ring stays visible. */
 const PIN_GAP = 6;
 const TOAST_CONTAINER_ID = 'exo-notification-container';
 
 let activeAnchor: string | null = null;
 let cancelPin: (() => void) | null = null;
+let overlay: HTMLElement | null = null;
+let resizeObserver: InstanceType<typeof window.ResizeObserver> | null = null;
 
 export function getActiveAnchor(): string | null {
     return activeAnchor;
@@ -48,27 +55,65 @@ export function clearActiveFile(): void {
     setActiveFile(null);
 }
 
+/** Elements that are page chrome to no one: other files' stuck headers, our own toasts and ring. */
+function isNotCover(element: Element): boolean {
+    return (
+        isInsideFile(element) ||
+        element.id === OVERLAY_ID ||
+        element.closest(`#${TOAST_CONTAINER_ID}`) !== null
+    );
+}
+
 function paint(): void {
-    let style = document.getElementById(STYLE_ID);
-    if (activeAnchor === null) {
-        style?.remove();
+    const file = getActiveFile();
+    if (!file) {
+        overlay?.remove();
+        overlay = null;
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        window.removeEventListener('resize', place);
         return;
     }
-    if (!style) {
-        style = document.createElement('style');
-        style.id = STYLE_ID;
-        document.head.appendChild(style);
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = OVERLAY_ID;
+        overlay.style.cssText =
+            'position: absolute; box-sizing: border-box; pointer-events: none; z-index: 3; ' +
+            `border-radius: 6px; border: 1px solid ${ACTIVE_FILE_BORDER}; ` +
+            `box-shadow: 0 0 14px 3px ${ACTIVE_FILE_GLOW}, inset 0 0 10px ${ACTIVE_FILE_GLOW}; ` +
+            'transition: top 120ms ease-out, height 120ms ease-out;';
+        document.body.appendChild(overlay);
+        window.addEventListener('resize', place);
     }
-    // Painted INSIDE the file's box, above its content: GitHub's file wrappers
-    // use content-visibility: auto, whose paint containment clips anything
-    // drawn outside them (an outline or outer shadow never shows). The overlay
-    // takes no pointer events, so the file stays clickable.
-    style.textContent =
-        `[id="${activeAnchor}"] { position: relative; }\n` +
-        `[id="${activeAnchor}"]::after { content: ""; position: absolute; inset: 0; ` +
-        `pointer-events: none; z-index: 10; border-radius: 6px; ` +
-        `border: 2px solid ${ACTIVE_FILE_BORDER}; ` +
-        `box-shadow: inset 0 0 14px ${ACTIVE_FILE_GLOW}; }`;
+    // Whatever moves the file moves the ring: its own height (a diff rendering
+    // lazily, a fold) and the document's (a neighbor collapsing, a panel).
+    resizeObserver?.disconnect();
+    if (typeof window.ResizeObserver === 'function') {
+        resizeObserver = new window.ResizeObserver(() => place());
+        resizeObserver.observe(document.body);
+        resizeObserver.observe(file.region);
+    }
+    place();
+}
+
+/** Lay the ring over the active file's box, in document coordinates (it scrolls with the page). */
+function place(): void {
+    const file = getActiveFile();
+    if (!file || !overlay) return;
+    const rect = file.region.getBoundingClientRect();
+    overlay.style.top = `${rect.top + window.scrollY}px`;
+    overlay.style.left = `${rect.left + window.scrollX}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+}
+
+/**
+ * The viewport line a file must reach to count as the one being looked at:
+ * just below the sticky chrome, where a pinned header sits. `reference`
+ * fixes the column the chrome is measured in.
+ */
+export function readingLine(reference: HTMLElement): number {
+    return coverHeight(reference, {ignoreCover: isNotCover}) + PIN_GAP + 1;
 }
 
 /**
@@ -83,9 +128,7 @@ export function pinActiveFile(): boolean {
     cancelPin = pinToTop(file.region, {
         gap: PIN_GAP,
         minCover: headerStickyOffset(file),
-        // Other files' stuck headers and our own toasts are not page chrome.
-        ignoreCover: (element) =>
-            isInsideFile(element) || element.closest(`#${TOAST_CONTAINER_ID}`) !== null,
+        ignoreCover: isNotCover,
     });
     return true;
 }

@@ -26,14 +26,21 @@ import {PR_URL, PR_CHANGES_URL, PR_HTML, TOOLBAR_HEIGHT, PIN_GAP, anchor} from '
 const openToyPr = (context: BrowserContext, url = PR_URL): Promise<Page> =>
     openFixturePage(context, url, PR_HTML);
 
-/** The active file's anchor, from the cursor's CSS rule. */
+/** The anchor of the file the ring lies over (null without a ring). */
 const activeAnchor = (page: Page) =>
-    page.evaluate(
-        () =>
-            document
-                .getElementById('exo-github-active-file')
-                ?.textContent?.match(/\[id="([^"]+)"\]/)?.[1] ?? null,
-    );
+    page.evaluate(() => {
+        const ring = document.getElementById('exo-github-active-file');
+        if (!ring) return null;
+        const r = ring.getBoundingClientRect();
+        for (const region of document.querySelectorAll<HTMLElement>(
+            '[role="region"][id^="diff-"]',
+        )) {
+            const b = region.getBoundingClientRect();
+            if (Math.abs(b.top - r.top) <= 1 && Math.abs(b.height - r.height) <= 1)
+                return region.id;
+        }
+        return null;
+    });
 
 const headerTop = (page: Page, id: string) =>
     page.evaluate((id) => document.getElementById(id)!.getBoundingClientRect().top, id);
@@ -222,32 +229,41 @@ test.describe('the review cursor (Files changed)', () => {
     }) => {
         const page = await openChanges(context);
 
-        // The ring is an overlay inside the file's box (GitHub's wrappers clip
-        // anything painted outside them); compare its color with the browser's
-        // own rendering of the intended hsla.
+        // The ring is one overlay on the body laid over the file (GitHub's
+        // wrappers clip anything painted outside them); it must sit exactly on
+        // the file, glow both ways, and take no clicks. Its color is compared
+        // with the browser's own rendering of the intended hsla.
+        await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
         const ring = await page.evaluate((id) => {
             const probe = document.createElement('span');
-            probe.style.color = 'hsla(55, 100%, 72%, 1)';
+            probe.style.color = 'hsla(55, 100%, 65%, 0.9)';
             document.body.appendChild(probe);
             const expected = getComputedStyle(probe).color;
             probe.remove();
-            const overlay = getComputedStyle(document.getElementById(id)!, '::after');
+            const overlay = document.getElementById('exo-github-active-file')!;
+            const style = getComputedStyle(overlay);
+            const a = overlay.getBoundingClientRect();
+            const b = document.getElementById(id)!.getBoundingClientRect();
             return {
                 expected,
-                borderColor: overlay.borderTopColor,
-                borderWidth: overlay.borderTopWidth,
-                borderStyle: overlay.borderTopStyle,
-                position: overlay.position,
-                pointerEvents: overlay.pointerEvents,
-                glow: overlay.boxShadow,
+                borderColor: style.borderTopColor,
+                borderWidth: style.borderTopWidth,
+                pointerEvents: style.pointerEvents,
+                glow: style.boxShadow,
+                offBy: Math.max(
+                    Math.abs(a.top - b.top),
+                    Math.abs(a.left - b.left),
+                    Math.abs(a.width - b.width),
+                    Math.abs(a.height - b.height),
+                ),
             };
         }, FIRST);
         expect(ring.borderColor).toBe(ring.expected);
-        expect(ring.borderWidth).toBe('2px');
-        expect(ring.borderStyle).toBe('solid');
-        expect(ring.position).toBe('absolute');
+        expect(ring.borderWidth).toBe('1px');
         expect(ring.pointerEvents).toBe('none');
         expect(ring.glow).toContain('inset');
+        expect(ring.glow.indexOf('inset')).toBeGreaterThan(0); // an outer glow too
+        expect(ring.offBy).toBeLessThanOrEqual(1);
 
         await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
         // The toolbar is really stuck above it.
@@ -305,11 +321,71 @@ test.describe('the review cursor (Files changed)', () => {
         expect(await seenKeys(page)).not.toContain('z');
     });
 
-    test('clicking inside a file makes it the active one', async ({context}) => {
+    test('the cursor follows the reader: scrolling moves the ring to the file under the reading line', async ({
+        context,
+    }) => {
         const page = await openChanges(context);
 
-        await page.locator(`#${LAST} .diff-content`).click();
-        await expect.poll(() => activeAnchor(page)).toBe(LAST);
+        // The reader takes the wheel (which also releases the settling pin)
+        // and scrolls until src/index.ts (third file) spans the reading line.
+        const distance = await page.evaluate(
+            ({id, offset}) => document.getElementById(id)!.getBoundingClientRect().top - offset,
+            {id: THIRD, offset: TOOLBAR_HEIGHT + 20},
+        );
+        await page.mouse.move(400, 300);
+        await page.mouse.wheel(0, distance);
+        await expect.poll(() => activeAnchor(page)).not.toBe(FIRST);
+        // Wherever the wheel actually landed, the ring is on the file that
+        // spans the reading line (just under the stuck toolbar).
+        const underLine = await page.evaluate(
+            (line) => {
+                const regions = Array.from(
+                    document.querySelectorAll<HTMLElement>('[role="region"][id^="diff-"]'),
+                );
+                return (
+                    regions.find((r) => r.getBoundingClientRect().bottom > line)?.id ??
+                    regions[regions.length - 1]!.id
+                );
+            },
+            TOOLBAR_HEIGHT + PIN_GAP + 1,
+        );
+        await expect.poll(() => activeAnchor(page)).toBe(underLine); // the ring glides for 120 ms
+
+        // K steps back to the previous unviewed file and pins it.
+        await page.keyboard.press('Shift+K');
+        await expect.poll(() => activeAnchor(page)).toBe(FIRST);
+        await page.keyboard.press('j');
+        await page.keyboard.press('j');
+        await page.keyboard.press('j');
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    });
+
+    test('J / K step between unviewed files; R toggles Viewed and carries the cursor on', async ({
+        context,
+    }) => {
+        const page = await openChanges(context);
+        await waitForKeybindings(page);
+
+        // J: next unviewed after the first (config.staging is viewed) is src/index.ts.
+        await page.keyboard.press('Shift+J');
+        await expect.poll(() => activeAnchor(page)).toBe(THIRD);
+        await expect.poll(() => headerTop(page, THIRD)).toBeCloseTo(PINNED_TOP, 0);
+        // K: back to the first.
+        await page.keyboard.press('Shift+K');
+        await expect.poll(() => activeAnchor(page)).toBe(FIRST);
+
+        // R marks the active file viewed; autoscroll moves on to src/index.ts.
+        await page.keyboard.press('Shift+R');
+        await expect
+            .poll(() => viewedStates(page))
+            .toEqual(['true', 'true', 'false', 'false', 'false', 'false']);
+        await expect.poll(() => activeAnchor(page)).toBe(THIRD);
+        // R again on the new active file toggles it viewed too, and the cursor moves on.
+        await page.keyboard.press('Shift+R');
+        await expect
+            .poll(() => viewedStates(page))
+            .toEqual(['true', 'true', 'true', 'false', 'false', 'false']);
+        await expect.poll(() => activeAnchor(page)).toBe(anchor('src/generated/bundle.yaml'));
     });
 
     test('a stops autoscroll and drops the ring', async ({context}) => {
@@ -317,11 +393,6 @@ test.describe('the review cursor (Files changed)', () => {
 
         await pressAndExpectToast(page, 'a', 'GitHub PR Autoscroll disabled');
         await expect.poll(() => activeAnchor(page)).toBeNull();
-        expect(
-            await page.evaluate(
-                (id) => getComputedStyle(document.getElementById(id)!, '::after').content,
-                FIRST,
-            ),
-        ).toBe('none');
+        await expect(page.locator('#exo-github-active-file')).toHaveCount(0);
     });
 });
