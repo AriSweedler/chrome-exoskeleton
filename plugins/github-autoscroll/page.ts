@@ -9,7 +9,11 @@ import {
     markAutoHiddenFilesViewed,
     unmarkAutoHiddenFilesViewed,
 } from '@exo/plugins/github-autoscroll/auto-hidden';
-import {type FoldAction, foldActiveFile} from '@exo/plugins/github-autoscroll/cursor';
+import {
+    type FoldAction,
+    foldActiveFile,
+    getActiveFile,
+} from '@exo/plugins/github-autoscroll/cursor';
 import {getFiles} from '@exo/plugins/github-autoscroll/files';
 import {
     scrollPageDown,
@@ -47,7 +51,12 @@ function announceAdvance(outcome: autoscroll.AdvanceOutcome): void {
 function startAutoscroll(): boolean {
     if (autoscroll.isRunning()) return true;
     if (!autoscroll.start({onAdvance: announceAdvance})) return false;
-    Notifications.show({message: 'GitHub PR Autoscroll enabled'});
+    const cursor = getActiveFile();
+    Notifications.show({
+        message: cursor
+            ? `GitHub PR Autoscroll enabled — cursor on ${cursor.path}`
+            : 'GitHub PR Autoscroll enabled — every file is viewed',
+    });
     return true;
 }
 
