@@ -17,8 +17,9 @@ import {pinToTop} from '@exo/plugins/github-autoscroll/scroll';
  */
 
 const STYLE_ID = 'exo-github-active-file';
-/** The cursor color. */
-export const ACTIVE_FILE_BORDER = 'hsla(55, 100%, 78%, 1)';
+/** The cursor color: a light yellow line with a soft inner glow. */
+export const ACTIVE_FILE_BORDER = 'hsla(55, 100%, 72%, 1)';
+export const ACTIVE_FILE_GLOW = 'hsla(55, 100%, 72%, 0.4)';
 /** Space kept between sticky page chrome and the pinned header, so the ring stays visible. */
 const PIN_GAP = 6;
 const TOAST_CONTAINER_ID = 'exo-notification-container';
@@ -58,9 +59,16 @@ function paint(): void {
         style.id = STYLE_ID;
         document.head.appendChild(style);
     }
+    // Painted INSIDE the file's box, above its content: GitHub's file wrappers
+    // use content-visibility: auto, whose paint containment clips anything
+    // drawn outside them (an outline or outer shadow never shows). The overlay
+    // takes no pointer events, so the file stays clickable.
     style.textContent =
-        `[id="${activeAnchor}"] { outline: 3px solid ${ACTIVE_FILE_BORDER}; ` +
-        `outline-offset: 2px; }`;
+        `[id="${activeAnchor}"] { position: relative; }\n` +
+        `[id="${activeAnchor}"]::after { content: ""; position: absolute; inset: 0; ` +
+        `pointer-events: none; z-index: 10; border-radius: 6px; ` +
+        `border: 2px solid ${ACTIVE_FILE_BORDER}; ` +
+        `box-shadow: inset 0 0 14px ${ACTIVE_FILE_GLOW}; }`;
 }
 
 /**

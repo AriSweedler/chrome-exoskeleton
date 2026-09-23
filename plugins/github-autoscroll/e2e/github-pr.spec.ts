@@ -16,7 +16,7 @@ import {PR_URL, PR_CHANGES_URL, PR_HTML, TOOLBAR_HEIGHT, PIN_GAP, anchor} from '
  * unit test cannot:
  *   1. An exo keystroke fires end-to-end (toast renders, handler runs), and
  *      the page never receives it — while ordinary keys still reach the page.
- *   2. The review cursor is painted (a real computed outline) and the pin
+ *   2. The review cursor is painted (a real computed overlay) and the pin
  *      lands the header where it should, under a real sticky toolbar, even
  *      though the emulated GitHub collapses the marked file a beat after it
  *      flips the viewed state — the layout shift that used to need three
@@ -222,15 +222,32 @@ test.describe('the review cursor (Files changed)', () => {
     }) => {
         const page = await openChanges(context);
 
-        const outline = await page.evaluate((id) => {
-            const style = getComputedStyle(document.getElementById(id)!);
+        // The ring is an overlay inside the file's box (GitHub's wrappers clip
+        // anything painted outside them); compare its color with the browser's
+        // own rendering of the intended hsla.
+        const ring = await page.evaluate((id) => {
+            const probe = document.createElement('span');
+            probe.style.color = 'hsla(55, 100%, 72%, 1)';
+            document.body.appendChild(probe);
+            const expected = getComputedStyle(probe).color;
+            probe.remove();
+            const overlay = getComputedStyle(document.getElementById(id)!, '::after');
             return {
-                style: style.outlineStyle,
-                width: style.outlineWidth,
-                color: style.outlineColor,
+                expected,
+                borderColor: overlay.borderTopColor,
+                borderWidth: overlay.borderTopWidth,
+                borderStyle: overlay.borderTopStyle,
+                position: overlay.position,
+                pointerEvents: overlay.pointerEvents,
+                glow: overlay.boxShadow,
             };
         }, FIRST);
-        expect(outline).toEqual({style: 'solid', width: '3px', color: 'rgb(255, 246, 143)'});
+        expect(ring.borderColor).toBe(ring.expected);
+        expect(ring.borderWidth).toBe('2px');
+        expect(ring.borderStyle).toBe('solid');
+        expect(ring.position).toBe('absolute');
+        expect(ring.pointerEvents).toBe('none');
+        expect(ring.glow).toContain('inset');
 
         await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
         // The toolbar is really stuck above it.
@@ -302,7 +319,7 @@ test.describe('the review cursor (Files changed)', () => {
         await expect.poll(() => activeAnchor(page)).toBeNull();
         expect(
             await page.evaluate(
-                (id) => getComputedStyle(document.getElementById(id)!).outlineStyle,
+                (id) => getComputedStyle(document.getElementById(id)!, '::after').content,
                 FIRST,
             ),
         ).toBe('none');

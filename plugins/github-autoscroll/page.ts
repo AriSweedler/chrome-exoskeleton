@@ -30,8 +30,10 @@ import {
 
 /** The popup tab's id; its enablement toggle gates the auto-run. */
 const TAB_ID = 'github-autoscroll';
+/** Help-overlay groups: the site, a pull request's tabs, and the review cursor. */
 const SITE_CONTEXT = 'GitHub';
 const PR_CONTEXT = 'GitHub PR';
+const REVIEW_CONTEXT = 'GitHub PR review';
 const NO_FILES_MESSAGE = "No files found. Make sure you're on a GitHub PR changes page.";
 
 const onPRPage = (): boolean => isGitHubPRPage(window.location.href);
@@ -179,28 +181,28 @@ function registerKeybindings(): void {
             key: 'a',
             description: 'Toggle PR autoscroll',
             handler: toggleAutoscroll,
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
         },
         {
             sequence: ['z', 'o'],
             description: 'Open the active file',
             handler: () => fold('open'),
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
         },
         {
             sequence: ['z', 'c'],
             description: 'Close the active file',
             handler: () => fold('close'),
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
         },
         {
             sequence: ['z', 'a'],
             description: 'Toggle the active file open/closed',
             handler: () => fold('toggle'),
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
         },
         {
@@ -208,7 +210,7 @@ function registerKeybindings(): void {
             description:
                 'Mark auto-hidden files viewed + scroll down (hold to sweep; skips large diffs)',
             handler: markAutoHiddenFilesAndAdvance,
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
             silent: true,
         },
@@ -217,7 +219,7 @@ function registerKeybindings(): void {
             modifiers: {shift: true},
             description: 'Show the auto-hidden files again (unmark as viewed)',
             handler: showAutoHiddenFiles,
-            context: PR_CONTEXT,
+            context: REVIEW_CONTEXT,
             when: onPRPage,
         },
     ]);

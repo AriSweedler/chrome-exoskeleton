@@ -44,8 +44,11 @@ describe('the active file', () => {
         expect(getActiveAnchor()).toBe(anchorFor('a.ts'));
         expect(getActiveFile()?.path).toBe('a.ts');
         const css = activeStyle()?.textContent ?? '';
-        expect(css).toContain(`[id="${anchorFor('a.ts')}"]`);
-        expect(css).toContain(`outline: 3px solid ${ACTIVE_FILE_BORDER}`);
+        expect(css).toContain(`[id="${anchorFor('a.ts')}"] { position: relative; }`);
+        expect(css).toContain(`[id="${anchorFor('a.ts')}"]::after`);
+        expect(css).toContain(`border: 2px solid ${ACTIVE_FILE_BORDER}`);
+        expect(css).toContain('inset 0 0 14px');
+        expect(css).toContain('pointer-events: none');
     });
 
     it('moves the rule rather than stacking rules, and clears it', () => {
