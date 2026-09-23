@@ -32,7 +32,7 @@ describe('toggleDiffLayout', () => {
         document.getElementById('diff-settings-tip')?.remove();
         expect(diffSettingsButton()?.closest('section')).not.toBeNull();
         document.body.innerHTML =
-            '<nav><button aria-haspopup="menu"><svg class="octicon octicon-gear"></svg></button></nav>';
+            '<nav><button aria-haspopup="true"><svg class="octicon octicon-gear"></svg></button></nav>';
         expect(diffSettingsButton()?.closest('nav')).not.toBeNull();
     });
 
@@ -66,7 +66,7 @@ describe('toggleDiffLayout', () => {
         uninstall();
         uninstall = installLayoutMenu(document, {items: false});
         const toggled = toggleDiffLayout();
-        await vi.advanceTimersByTimeAsync(2_000);
+        await vi.advanceTimersByTimeAsync(3_500);
         expect(await toggled).toEqual({kind: 'no-layout-items'});
         expect(document.querySelector('[role="menu"]')).toBeNull();
         expect(GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR).toContain('menuitemradio');

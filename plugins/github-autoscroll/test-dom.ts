@@ -185,7 +185,7 @@ export function renderToolbar(layout: 'unified' | 'split'): string {
     return `<div class="PullRequestFilesToolbar-module__stickyHeaderActivationThreshold__nWqbQ"></div>
     <section class="use-sticky-header-module__stickyHeader__sf0hv PullRequestFilesToolbar-module__toolbar__ztHN6" data-layout="${layout}">
       <h2 class="sr-only">Pull request toolbar</h2>
-      <button data-component="IconButton" type="button" aria-haspopup="menu" aria-labelledby="diff-settings-tip"
+      <button data-component="IconButton" type="button" aria-haspopup="true" aria-expanded="false" aria-labelledby="diff-settings-tip"
               class="prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7">
         <svg data-component="Octicon" aria-hidden="true" class="octicon octicon-gear" viewBox="0 0 16 16" width="16" height="16"></svg>
       </button>
@@ -214,7 +214,7 @@ export function installLayoutMenu(root: Document, {items = true} = {}): () => vo
     const close = () => root.getElementById('exo-test-layout-menu')?.remove();
     const onClick = (event: Event): void => {
         const target = event.target as Element | null;
-        const gear = target?.closest('button[aria-haspopup="menu"]');
+        const gear = target?.closest('button[aria-haspopup]');
         if (gear) {
             if (root.getElementById('exo-test-layout-menu')) close();
             else {
@@ -254,7 +254,7 @@ export const GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR = `<script>
     + '<div role="menuitemradio" aria-checked="' + (layout === 'split') + '"><span>Split</span></div>'
     + '</div><div role="menuitemcheckbox" aria-checked="false">Hide whitespace</div></div>';
   document.addEventListener('click', (event) => {
-    const gear = event.target && event.target.closest('button[aria-haspopup="menu"]');
+    const gear = event.target && event.target.closest('button[aria-haspopup]');
     if (gear) {
       if (document.getElementById('exo-test-layout-menu')) close();
       else document.body.insertAdjacentHTML('beforeend', menu(document.body.dataset.layout || 'unified'));

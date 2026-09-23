@@ -27,7 +27,7 @@ function accessibleName(button: HTMLButtonElement): string {
  */
 export function diffSettingsButton(): HTMLButtonElement | null {
     const gears = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]'),
+        document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup]'),
     ).filter((button) => button.querySelector('svg.octicon-gear') !== null);
     return (
         gears.find((button) => /diff view settings/i.test(accessibleName(button))) ??
@@ -45,15 +45,28 @@ interface LayoutItems {
     otherItem: HTMLElement;
 }
 
-/** The two Layout radio items of an open diff view settings menu, if it is open. */
+/** A menu item's label, without icons: its text, trimmed and case-folded. */
+const label = (item: Element) => (item.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** Whether a radio-like menu item is the selected one. */
+const isChecked = (item: Element) =>
+    item.getAttribute('aria-checked') === 'true' ||
+    item.getAttribute('aria-selected') === 'true' ||
+    item.querySelector('svg.octicon-check') !== null;
+
+/** The two Layout items of an open diff view settings menu, if it is open. */
 function layoutItems(): LayoutItems | null {
-    const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
+    const items = Array.from(
+        document.querySelectorAll<HTMLElement>(
+            '[role="menuitemradio"], [role="menuitem"], [role="option"]',
+        ),
+    );
     const find = (layout: DiffLayout) =>
-        items.find((item) => item.textContent?.trim() === LAYOUT_LABELS[layout]) ?? null;
+        items.find((item) => label(item).startsWith(LAYOUT_LABELS[layout].toLowerCase())) ?? null;
     const unified = find('unified');
     const split = find('split');
     if (!unified || !split) return null;
-    const current: DiffLayout = split.getAttribute('aria-checked') === 'true' ? 'split' : 'unified';
+    const current: DiffLayout = isChecked(split) ? 'split' : 'unified';
     const other: DiffLayout = current === 'split' ? 'unified' : 'split';
     return {current, other, otherItem: other === 'split' ? split : unified};
 }
@@ -70,7 +83,7 @@ export async function toggleDiffLayout(): Promise<ToggleLayoutOutcome> {
     if (!items) {
         if (!gear) return {kind: 'no-settings-button'};
         gear.click();
-        items = await waitFor(layoutItems, {intervalMs: 50, attempts: 30});
+        items = await waitFor(layoutItems, {intervalMs: 50, attempts: 60});
         if (!items) {
             closeMenu(gear);
             return {kind: 'no-layout-items'};

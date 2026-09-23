@@ -49,7 +49,7 @@ export const PR_HTML = `<!doctype html>
     <div class="spacer"></div>
     <div class="toolbar PullRequestFilesToolbar-module__toolbar__ztHN6">
       Pull request toolbar
-      <button type="button" aria-haspopup="menu" aria-label="Open diff view settings">
+      <button type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open diff view settings">
         <svg class="octicon octicon-gear" viewBox="0 0 16 16" width="16" height="16"></svg>
       </button>
     </div>
