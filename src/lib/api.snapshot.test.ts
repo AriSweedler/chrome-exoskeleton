@@ -70,8 +70,10 @@ describe('framework API surface', () => {
               "claimPage",
               "dispose",
               "isDisposed",
+              "isInvalidated",
               "onDispose",
               "replacedEventName",
+              "retireIfInvalidated",
             ],
             "@exo/lib/popup-tabs/environment-ui": [
               "EnvButton",
