@@ -21,9 +21,19 @@ describe('toggleDiffLayout', () => {
         document.body.innerHTML = '';
     });
 
-    it('finds the gear by its icon inside the files toolbar', () => {
-        expect(diffSettingsButton()).not.toBeNull();
-        expect(diffSettingsButton()?.querySelector('svg.octicon-gear')).not.toBeNull();
+    it('finds the gear by its name, past the empty toolbar sentinel that precedes the toolbar', () => {
+        const gear = diffSettingsButton();
+        expect(gear).not.toBeNull();
+        expect(gear?.querySelector('svg.octicon-gear')).not.toBeNull();
+        expect(gear?.closest('section')).not.toBeNull();
+    });
+
+    it('falls back to the toolbar gear when the tooltip is missing, and to any gear menu button', () => {
+        document.getElementById('diff-settings-tip')?.remove();
+        expect(diffSettingsButton()?.closest('section')).not.toBeNull();
+        document.body.innerHTML =
+            '<nav><button aria-haspopup="menu"><svg class="octicon octicon-gear"></svg></button></nav>';
+        expect(diffSettingsButton()?.closest('nav')).not.toBeNull();
     });
 
     it('opens the menu, clicks the other layout, and the menu closes', async () => {

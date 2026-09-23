@@ -12,11 +12,29 @@ export type DiffLayout = 'unified' | 'split';
 
 const LAYOUT_LABELS: Record<DiffLayout, string> = {unified: 'Unified', split: 'Split'};
 
-/** The gear that opens the diff view settings: the toolbar's menu button with a gear icon. */
+/** A button's name as assistive tech reads it: aria-label plus what aria-labelledby points at. */
+function accessibleName(button: HTMLButtonElement): string {
+    const ids = button.getAttribute('aria-labelledby')?.split(/\s+/) ?? [];
+    const labelled = ids.map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
+    return `${button.getAttribute('aria-label') ?? ''} ${labelled}`.trim();
+}
+
+/**
+ * The gear that opens the diff view settings. Found by its own name first
+ * ("Open diff view settings"), then as the gear-iconed menu button inside the
+ * files toolbar proper — never by the first PullRequestFilesToolbar-classed
+ * element, which is an empty sticky-header sentinel that precedes it.
+ */
 export function diffSettingsButton(): HTMLButtonElement | null {
-    const toolbar = document.querySelector('[class*="PullRequestFilesToolbar"]') ?? document;
+    const gears = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]'),
+    ).filter((button) => button.querySelector('svg.octicon-gear') !== null);
     return (
-        toolbar.querySelector('button[aria-haspopup="menu"] svg.octicon-gear')?.closest('button') ??
+        gears.find((button) => /diff view settings/i.test(accessibleName(button))) ??
+        gears.find((button) =>
+            button.closest('[class*="PullRequestFilesToolbar-module__toolbar"]'),
+        ) ??
+        gears[0] ??
         null
     );
 }

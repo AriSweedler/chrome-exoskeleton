@@ -176,9 +176,14 @@ export const GITHUB_BEHAVIOR_SCRIPT = `<script>
 
 // --- the diff view settings menu ------------------------------------------
 
-/** GitHub's files toolbar, reduced to the gear that opens the diff view settings. */
+/**
+ * GitHub's files toolbar, reduced to the gear that opens the diff view
+ * settings — preceded, as on GitHub, by an empty sticky-header sentinel that
+ * carries a PullRequestFilesToolbar class of its own.
+ */
 export function renderToolbar(layout: 'unified' | 'split'): string {
-    return `<section class="use-sticky-header-module__stickyHeader__sf0hv PullRequestFilesToolbar-module__toolbar__ztHN6" data-layout="${layout}">
+    return `<div class="PullRequestFilesToolbar-module__stickyHeaderActivationThreshold__nWqbQ"></div>
+    <section class="use-sticky-header-module__stickyHeader__sf0hv PullRequestFilesToolbar-module__toolbar__ztHN6" data-layout="${layout}">
       <h2 class="sr-only">Pull request toolbar</h2>
       <button data-component="IconButton" type="button" aria-haspopup="menu" aria-labelledby="diff-settings-tip"
               class="prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7">
