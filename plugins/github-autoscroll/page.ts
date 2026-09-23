@@ -132,21 +132,31 @@ function toggleViewedOnActive(): void {
 // --- folds ----------------------------------------------------------------
 
 function fold(action: FoldAction): void {
+    const path = getActiveFile()?.path;
     const outcome = foldActiveFile(action);
-    if (outcome === 'no-active-file') {
-        Notifications.show({
-            message: 'No active file — press a to start autoscroll',
-            type: NotificationType.Error,
-            replace: true,
-        });
-    } else if (outcome === 'no-fold-control') {
-        Notifications.show({
-            message: 'The active file has no fold control',
-            type: NotificationType.Error,
-            replace: true,
-        });
+    const error = (message: string) =>
+        Notifications.show({message, type: NotificationType.Error, replace: true});
+    switch (outcome) {
+        case 'no-active-file':
+            error('No active file — press a to start autoscroll');
+            return;
+        case 'no-fold-control':
+            error(`No fold control on ${path}`);
+            return;
+        case 'unchanged':
+            Notifications.show({
+                message: `${path} is already ${action === 'close' ? 'closed' : 'open'}`,
+                replace: true,
+            });
+            return;
+        case 'opened':
+        case 'closed':
+            // The fold may be off screen while it pins back: say which file.
+            Notifications.show({
+                message: `${outcome === 'opened' ? 'Opened' : 'Closed'} ${path}`,
+                replace: true,
+            });
     }
-    // Otherwise the fold itself is the feedback.
 }
 
 // --- the d sweep ----------------------------------------------------------
