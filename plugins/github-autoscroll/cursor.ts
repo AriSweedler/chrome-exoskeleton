@@ -118,14 +118,19 @@ export function readingLine(reference: HTMLElement): number {
 
 /**
  * Scroll the active file's header to the top of the viewport, below any
- * sticky chrome, and hold it there while the layout settles. False when
- * there is no active file.
+ * sticky chrome, and hold it there through the layout shifts that follow,
+ * until the reader scrolls, clicks or types. False when there is no active
+ * file.
  */
 export function pinActiveFile(): boolean {
     const file = getActiveFile();
     if (!file) return false;
     cancelPin?.();
-    cancelPin = pinToTop(file.region, {
+    // Pinned by anchor, not by node: GitHub re-renders a region when its diff
+    // arrives, and the pin must follow the file through that. Bound to this
+    // file, not to whichever file the cursor moves to later.
+    const {anchor} = file;
+    cancelPin = pinToTop(() => fileByAnchor(anchor)?.region ?? null, {
         gap: PIN_GAP,
         minCover: headerStickyOffset(file),
         ignoreCover: isNotCover,

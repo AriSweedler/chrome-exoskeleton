@@ -6,8 +6,8 @@ import {nextFrame} from '@exo/plugins/github-autoscroll/frame';
  * lazily (content-visibility: auto) and collapses a file a beat after it is
  * marked viewed, so a scroll animated toward a position measured once lands
  * wrong — the "click Viewed three times to get it right" symptom. pinToTop
- * jumps instead, then re-measures every frame for a while and corrects the
- * drift as the layout settles under it.
+ * jumps instead, then holds the file there, re-pinning after every layout
+ * shift until the reader takes the wheel.
  */
 
 /** Bypasses a page's `scroll-behavior: smooth`, which 'auto' would inherit. */
@@ -46,18 +46,6 @@ export interface CoverOptions {
     /** Elements never counted as cover: the target's siblings' sticky headers, toasts. */
     ignoreCover?: (element: Element) => boolean;
 }
-
-export interface PinOptions extends CoverOptions {
-    /** Pixels left between the cover and the element's top edge. */
-    gap?: number;
-    /** How long to keep correcting drift after the jump. */
-    settleMs?: number;
-}
-
-export const DEFAULT_SETTLE_MS = 1000;
-
-/** Input that means the user took the wheel: a pin in progress must let go. */
-const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'mousedown', 'keydown'] as const;
 
 /** Sticky or fixed elements under the point (x, y) in the viewport that are not `target`'s own. */
 function chromeAt(target: HTMLElement, y: number, ignoreCover?: (element: Element) => boolean) {
@@ -121,45 +109,116 @@ export function restingTop(target: HTMLElement, gap: number, options: CoverOptio
     return wanted;
 }
 
+export interface PinOptions extends CoverOptions {
+    /** Pixels left between the cover and the element's top edge. */
+    gap?: number;
+    /**
+     * How long after the jump to re-measure every frame, for shifts that
+     * resize nothing (chrome becoming stuck). Layout shifts are corrected for
+     * as long as the pin holds, not only within this window.
+     */
+    settleMs?: number;
+}
+
+export const DEFAULT_SETTLE_MS = 1000;
+
+/** Input that means the user took the wheel: a pin in progress must let go. */
+const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'mousedown', 'keydown'] as const;
+
 /**
- * Put `element`'s top edge just below whatever covers the top of the
- * viewport, instantly, and hold it there for `settleMs` while the layout
- * shifts under it (lazy diffs rendering, a neighbor collapsing). Lets go at
- * once when the user scrolls, clicks or types. Returns a canceller.
+ * What to pin: an element, or a resolver that finds it afresh on every
+ * reading, for a target the page re-renders (GitHub replaces a file's region
+ * when its diff arrives). A resolver returning null means "not on the page
+ * right now": the pin waits for it to come back. A plain element that leaves
+ * the DOM ends the pin.
  */
-export function pinToTop(element: HTMLElement, options: PinOptions = {}): () => void {
+export type PinTarget = HTMLElement | (() => HTMLElement | null);
+
+/**
+ * Put the target's top edge just below whatever covers the top of the
+ * viewport, instantly, and hold it there until the reader takes the wheel.
+ *
+ * The layout keeps shifting under a pinned file long after the jump: diffs
+ * above it render lazily, a neighbor collapses a beat after it is marked
+ * viewed, a file scrolled far away swaps its rendered height for a
+ * placeholder. Every shift above the target drags it up or down the
+ * viewport, and a pin that held for a fixed second left the later shifts
+ * uncorrected — the file's first lines ended up hidden under the sticky
+ * chrome. So the hold has no clock: a ResizeObserver on the target and each
+ * of its ancestors (a shift above changes some ancestor's height) re-pins
+ * after every layout change, and a frame loop covers the first `settleMs`
+ * for the shifts that resize nothing, like chrome becoming stuck.
+ *
+ * The pin lets go the moment the user scrolls, clicks or types, on a scroll
+ * it did not make itself (the page scrolling to a hash target, a scrollbar
+ * drag, the browser's own anchoring), and when a plain element target leaves
+ * the DOM. Returns a canceller.
+ */
+export function pinToTop(target: PinTarget, options: PinOptions = {}): () => void {
     const {gap = 0, settleMs = DEFAULT_SETTLE_MS} = options;
+    const resolve = typeof target === 'function' ? target : () => target;
     const started = Date.now();
     let done = false;
     let cancelFrame: (() => void) | null = null;
+    let observer: InstanceType<typeof window.ResizeObserver> | null = null;
+    let observed: HTMLElement | null = null;
+    /** Where the pin last left the page; a different reading is someone else's scroll. */
+    let expectedY = window.scrollY;
 
     const stop = (): void => {
         if (done) return;
         done = true;
         cancelFrame?.();
+        observer?.disconnect();
         for (const type of USER_INPUT_EVENTS) window.removeEventListener(type, stop, true);
+        window.removeEventListener('scroll', onScroll);
+    };
+
+    const onScroll = (): void => {
+        if (Math.abs(window.scrollY - expectedY) > 1) stop();
+    };
+
+    /** Watch the target and every ancestor: a shift above it changes some ancestor's height. */
+    const watch = (element: HTMLElement): void => {
+        if (element === observed || typeof window.ResizeObserver !== 'function') return;
+        observed = element;
+        observer?.disconnect();
+        observer = new window.ResizeObserver(() => correct());
+        for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+            observer.observe(node);
+        }
     };
 
     const correct = (): void => {
-        cancelFrame = null;
         if (done) return;
-        if (!element.isConnected) {
-            stop();
+        const element = resolve();
+        if (!element || !element.isConnected) {
+            // A plain element that left the DOM is gone for good; a resolver's
+            // target is mid re-render and will be back.
+            if (typeof target !== 'function') stop();
             return;
         }
+        watch(element);
         const wanted = restingTop(element, gap, options);
         const delta = element.getBoundingClientRect().top - wanted;
-        if (Math.abs(delta) > 1) window.scrollBy({top: delta, behavior: INSTANT});
-        if (Date.now() - started >= settleMs) {
-            stop();
-            return;
+        if (Math.abs(delta) > 1) {
+            window.scrollBy({top: delta, behavior: INSTANT});
+            expectedY = window.scrollY;
         }
-        cancelFrame = nextFrame(correct);
+    };
+
+    const settle = (): void => {
+        cancelFrame = null;
+        if (done) return;
+        correct();
+        if (done || Date.now() - started >= settleMs) return;
+        cancelFrame = nextFrame(settle);
     };
 
     for (const type of USER_INPUT_EVENTS) {
         window.addEventListener(type, stop, {capture: true, passive: true});
     }
-    correct();
+    window.addEventListener('scroll', onScroll, {passive: true});
+    settle();
     return stop;
 }

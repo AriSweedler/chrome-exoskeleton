@@ -27,8 +27,13 @@ GitHub renders diffs lazily (`content-visibility: auto`) and collapses a file
 a beat after it is marked viewed, so a scroll animated toward a position
 measured once lands wrong. Every scroll aimed at a file therefore jumps
 instantly to put the header just below whatever sticky chrome covers the top
-of the viewport (measured, not configured), then keeps re-measuring for a
-second and corrects any drift — until the user scrolls, clicks or types.
+of the viewport (measured, not configured), then holds it there: a
+ResizeObserver on the file and its ancestors re-pins after every layout
+shift above it (a diff above finishing its lazy render, a neighbor
+collapsing late), and a frame loop covers the first second for shifts that
+resize nothing. The hold ends when the user scrolls, clicks or types, or
+when the page scrolls somewhere by itself. The pin follows the file by
+GitHub's anchor id, so a region GitHub re-renders stays pinned.
 
 ## Layout
 
@@ -38,7 +43,7 @@ second and corrects any drift — until the user scrolls, clicks or types.
 | `cursor.ts`      | the active file (one CSS rule on GitHub's region id), pinning, folds      |
 | `autoscroll.ts`  | detecting viewed flips by state diff, moving the cursor                   |
 | `auto-hidden.ts` | the `d` / `D` sweep and its memory                                        |
-| `scroll.ts`      | page jumps and the settling pin                                           |
+| `scroll.ts`      | page jumps and the holding pin                                            |
 | `url.ts`         | PR URL parsing and tab navigation                                         |
 | `page.ts`        | keys, auto-run, SPA navigation, popup messages                            |
 | `test-dom.ts`    | a GitHub-shaped fixture with click emulation, for unit and e2e tests      |

@@ -39,6 +39,8 @@ export const PR_HTML = `<!doctype html>
     <meta charset="utf-8"><title>toy app</title>
     <style>
       body { margin: 0; }
+      /* No scroll anchoring: the pin must hold where the browser gives it no help. */
+      html, body { overflow-anchor: none; }
       .toolbar { position: sticky; top: 0; height: ${TOOLBAR_HEIGHT}px; background: #eee; }
       .spacer { height: 300px; }
       .tail { height: 3000px; }

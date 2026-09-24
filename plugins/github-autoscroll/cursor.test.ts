@@ -95,10 +95,12 @@ describe('the active file', () => {
         setActiveFile(a);
         expect(pinActiveFile()).toBe(true);
         expect(scroll.pinToTop).toHaveBeenCalledWith(
-            a.region,
+            expect.any(Function),
             expect.objectContaining({minCover: 40, gap: 6}),
         );
-        const {ignoreCover} = (scroll.pinToTop as ReturnType<typeof vi.fn>).mock.calls[0][1];
+        const [resolve, {ignoreCover}] = (scroll.pinToTop as ReturnType<typeof vi.fn>).mock
+            .calls[0];
+        expect(resolve()).toBe(a.region);
         expect(ignoreCover(b.header)).toBe(true);
         const toast = document.createElement('div');
         toast.id = 'exo-notification-container';
@@ -107,7 +109,22 @@ describe('the active file', () => {
         expect(ignoreCover(document.body)).toBe(false);
     });
 
-    it('cancels a pin still settling when a new one starts or the cursor clears', () => {
+    it('the pin follows its file through a re-render of the region, and waits while it is gone', () => {
+        const [a, , c] = getFiles();
+        setActiveFile(a);
+        pinActiveFile();
+        const [resolve] = (scroll.pinToTop as ReturnType<typeof vi.fn>).mock.calls[0];
+        const clone = a.region.cloneNode(true) as HTMLElement;
+        a.region.replaceWith(clone);
+        expect(resolve()).toBe(clone);
+        // The cursor moving on does not retarget a pin already holding.
+        setActiveFile(c);
+        expect(resolve()).toBe(clone);
+        clone.remove();
+        expect(resolve()).toBeNull();
+    });
+
+    it('cancels a pin still holding when a new one starts or the cursor clears', () => {
         const cancel = vi.fn();
         (scroll.pinToTop as ReturnType<typeof vi.fn>).mockReturnValue(cancel);
         const [a] = getFiles();

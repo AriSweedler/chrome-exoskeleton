@@ -154,7 +154,33 @@ describe('restingTop', () => {
     });
 });
 
+/** A stand-in ResizeObserver: tests fire it to say "the layout changed". */
+class FakeResizeObserver {
+    static instances: FakeResizeObserver[] = [];
+    observed = new Set<Element>();
+    disconnected = false;
+    constructor(private readonly callback: () => void) {
+        FakeResizeObserver.instances.push(this);
+    }
+    observe(element: Element): void {
+        this.observed.add(element);
+    }
+    unobserve(element: Element): void {
+        this.observed.delete(element);
+    }
+    disconnect(): void {
+        this.disconnected = true;
+        this.observed.clear();
+    }
+    fire(): void {
+        if (!this.disconnected) this.callback();
+    }
+}
+const layoutChanged = () => FakeResizeObserver.instances.forEach((observer) => observer.fire());
+
 describe('pinToTop', () => {
+    const scrollByCalls = () => (window.scrollBy as ReturnType<typeof vi.fn>).mock.calls.length;
+
     beforeEach(() => {
         vi.useFakeTimers({
             toFake: [
@@ -165,6 +191,8 @@ describe('pinToTop', () => {
                 'cancelAnimationFrame',
             ],
         });
+        FakeResizeObserver.instances = [];
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver);
         window.scrollBy = vi.fn((options?: {top?: number} | number) => {
             // Emulate the scroll: every box moves up by the delta.
             const delta = typeof options === 'number' ? options : (options?.top ?? 0);
@@ -175,7 +203,9 @@ describe('pinToTop', () => {
     });
 
     afterEach(() => {
+        vi.unstubAllGlobals();
         vi.useRealTimers();
+        Object.defineProperty(window, 'scrollY', {value: 0, configurable: true, writable: true});
         document.body.innerHTML = '';
     });
 
@@ -194,20 +224,66 @@ describe('pinToTop', () => {
         cancel();
     });
 
-    it('corrects drift while the layout settles, then stops at settleMs', () => {
+    it('corrects drift every frame while settling', () => {
         const el = box(700);
         pinToTop(el);
         expect(el.top).toBe(0);
         el.top = 240; // something above it collapsed a beat later
         vi.advanceTimersByTime(20);
         expect(el.top).toBe(0);
+    });
 
-        vi.advanceTimersByTime(DEFAULT_SETTLE_MS);
-        const calls = (window.scrollBy as ReturnType<typeof vi.fn>).mock.calls.length;
-        el.top = 240; // after the window, a shift is left alone
+    it('after the settle window, holds on: a layout change re-pins, a bare shift waits for one', () => {
+        const el = box(700);
+        pinToTop(el);
+        vi.advanceTimersByTime(DEFAULT_SETTLE_MS + 50);
+        const calls = scrollByCalls();
+        el.top = 240;
         vi.advanceTimersByTime(200);
+        expect(scrollByCalls()).toBe(calls); // the frame loop is over
         expect(el.top).toBe(240);
-        expect((window.scrollBy as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls);
+        layoutChanged(); // ...but a resize anywhere above still re-pins
+        expect(el.top).toBe(0);
+    });
+
+    it('watches the element and each of its ancestors, so a shift above it is seen', () => {
+        const wrapper = document.createElement('section');
+        document.body.appendChild(wrapper);
+        const el = box(700);
+        wrapper.appendChild(el);
+        pinToTop(el);
+        const [observer] = FakeResizeObserver.instances;
+        expect(observer!.observed).toEqual(
+            new Set([el, wrapper, document.body, document.documentElement]),
+        );
+    });
+
+    it('follows a resolver through a re-render, waiting while its target is gone', () => {
+        const first = box(700);
+        let current: HTMLElement | null = first;
+        pinToTop(() => current);
+        expect(first.top).toBe(0);
+
+        current = null; // mid re-render
+        layoutChanged();
+        vi.advanceTimersByTime(50);
+        const second = box(300);
+        current = second; // the re-rendered region
+        layoutChanged();
+        expect(second.top).toBe(0);
+        const latest = FakeResizeObserver.instances[FakeResizeObserver.instances.length - 1]!;
+        expect(latest.observed.has(second)).toBe(true);
+    });
+
+    it('ends when a plain element leaves the DOM', () => {
+        const gone = box(700);
+        pinToTop(gone);
+        gone.remove();
+        gone.top = 300;
+        vi.advanceTimersByTime(100);
+        layoutChanged();
+        expect(gone.top).toBe(300);
+        expect(FakeResizeObserver.instances[0]!.disconnected).toBe(true);
     });
 
     it('ignores sub-pixel differences', () => {
@@ -216,28 +292,41 @@ describe('pinToTop', () => {
         expect(window.scrollBy).not.toHaveBeenCalled();
     });
 
-    it('lets go when the user scrolls, clicks or types', () => {
+    it('lets go for good when the user scrolls, clicks or types', () => {
         const el = box(700);
         pinToTop(el);
         window.dispatchEvent(new Event('wheel'));
         el.top = 300;
         vi.advanceTimersByTime(100);
+        layoutChanged();
         expect(el.top).toBe(300);
+        expect(FakeResizeObserver.instances[0]!.disconnected).toBe(true);
     });
 
-    it('lets go when cancelled or when the element leaves the DOM', () => {
+    it('lets go on a scroll it did not make; its own scrolls do not count', () => {
+        const el = box(700);
+        pinToTop(el);
+        // The page reports the position the pin left it at: still holding.
+        window.dispatchEvent(new Event('scroll'));
+        el.top = 240;
+        vi.advanceTimersByTime(20);
+        expect(el.top).toBe(0);
+        // Someone else moved the page.
+        Object.defineProperty(window, 'scrollY', {value: 500, configurable: true});
+        window.dispatchEvent(new Event('scroll'));
+        el.top = 240;
+        vi.advanceTimersByTime(100);
+        layoutChanged();
+        expect(el.top).toBe(240);
+    });
+
+    it('lets go when cancelled', () => {
         const el = box(700);
         const cancel = pinToTop(el);
         cancel();
         el.top = 300;
         vi.advanceTimersByTime(100);
+        layoutChanged();
         expect(el.top).toBe(300);
-
-        const gone = box(700);
-        pinToTop(gone);
-        gone.remove();
-        gone.top = 300;
-        vi.advanceTimersByTime(100);
-        expect(gone.top).toBe(300);
     });
 });

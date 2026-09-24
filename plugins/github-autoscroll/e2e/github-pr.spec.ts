@@ -18,6 +18,7 @@ import {
     PIN_GAP,
     anchor,
 } from './fixture-pages';
+import {DEFAULT_SETTLE_MS} from '@exo/plugins/github-autoscroll/scroll';
 
 /**
  * These tests exercise the real content script in Chromium to prove what a
@@ -294,6 +295,38 @@ test.describe('the review cursor (Files changed)', () => {
             .toBeCloseTo(PINNED_TOP, 0);
         await page.waitForTimeout(400);
         expect(await headerTop(page, THIRD)).toBeCloseTo(PINNED_TOP, 0);
+    });
+
+    test('the pin holds after settling: a shift above the file is corrected until the reader takes the wheel', async ({
+        context,
+    }) => {
+        const page = await openChanges(context);
+        await expect.poll(() => headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
+
+        // Well past the settle window, everything above the toolbar shrinks —
+        // what a file above finishing its lazy render does on GitHub. The
+        // fixture has scroll anchoring off, so only the pin can put it back.
+        const shrinkSpacerTo = (px: number) =>
+            page.evaluate((px) => {
+                document.querySelector<HTMLElement>('.spacer')!.style.height = `${px}px`;
+            }, px);
+        await page.waitForTimeout(DEFAULT_SETTLE_MS + 300);
+        await shrinkSpacerTo(100);
+        await expect
+            .poll(() => headerTop(page, FIRST), {timeout: 2000, intervals: [50]})
+            .toBeCloseTo(PINNED_TOP, 0);
+        await page.waitForTimeout(200);
+        expect(await headerTop(page, FIRST)).toBeCloseTo(PINNED_TOP, 0);
+
+        // The reader takes the wheel: the pin lets go, and the next shift is left alone.
+        await page.mouse.move(400, 300);
+        await page.mouse.wheel(0, 80);
+        await expect.poll(() => headerTop(page, FIRST)).not.toBeCloseTo(PINNED_TOP, 0);
+        await page.waitForTimeout(300);
+        const before = await headerTop(page, FIRST);
+        await shrinkSpacerTo(0);
+        await page.waitForTimeout(300);
+        expect(await headerTop(page, FIRST)).toBeCloseTo(before - 100, 0);
     });
 
     test('h closes the active file and l opens it — each time pinning it back', async ({
