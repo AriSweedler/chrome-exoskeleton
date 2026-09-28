@@ -1,6 +1,7 @@
 import {useState, useEffect} from 'react';
 import {Tabs} from '@exo/lib/service-worker/tabs';
 import {TabBar} from '@exo/popup/TabBar';
+import {ToastFiltersSection} from '@exo/popup/ToastFiltersSection';
 // eslint-disable-next-line no-restricted-imports -- CSS must use relative imports
 import './Popup.css';
 
@@ -41,6 +42,7 @@ export function Popup() {
     return (
         <div className="popup">
             <TabBar />
+            <ToastFiltersSection />
         </div>
     );
 }

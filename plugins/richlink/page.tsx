@@ -59,6 +59,7 @@ export async function copyRichLink(request: CopyRichLinkRequest) {
     const chip = (label: string) => <span style={theme.toast.previewChip}>{label}</span>;
 
     Notifications.show({
+        tag: 'richlink.copied',
         message,
         duration: CYCLE_WINDOW_MS,
         replace: cycling,

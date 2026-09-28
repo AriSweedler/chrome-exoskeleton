@@ -13,6 +13,7 @@
 - **Guards**: a `when` predicate makes a binding transparent until it applies
 - **Pass-through**: Ctrl+V hands the next keystroke to the page untouched
 - **Silent bindings**: `silent: true` skips the keystroke announcement (for keys held under auto-repeat)
+- **Tagged banners**: every banner the registry shows carries a tag under `keystroke`, so a host can mute them as a family (see below)
 
 ## Basic Usage
 
@@ -170,6 +171,23 @@ export function MyComponent() {
     return <div>My Component</div>;
 }
 ```
+
+## Banner Tags
+
+The registry's notifier receives a `tag` with every banner, a dotted name
+under one root so a host can mute the whole family or one branch of it:
+
+| banner                                       | tag                            |
+| -------------------------------------------- | ------------------------------ |
+| "exo keystroke" for a fired binding          | `keystroke.fired.<context>`    |
+| … for a binding with no `context`            | `keystroke.fired`              |
+| pending sequence (`**pending** \`g\` …`)     | `keystroke.pending`            |
+| pass-through armed / "passed `x` to the page" | `keystroke.pass-through`       |
+
+`<context>` is the binding's `context` as a slug: lowercased, every run of
+other characters one dash (`GitHub PR review` → `github-pr-review`). In the
+exoskeleton the notifier is the toast library, whose mute filters match a tag
+or any dotted ancestor of it (`keystroke` covers all four rows).
 
 ## Help Overlay
 

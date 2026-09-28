@@ -10,7 +10,7 @@ and `v` act on it.
 
 | key        | where             | does                                                                                                                                                                                    |
 | ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `a`        | PR pages          | toggle autoscroll: marking a file Viewed moves the cursor to the next unviewed file and pins its header to the top of the viewport (wrapping around; a toast when everything is viewed) |
+| `a`        | PR pages          | toggle autoscroll: marking a file Viewed moves the cursor to the next unviewed file and pins its header to the top of the viewport (wrapping around; a toast when everything is viewed). Off and on again flips quiet review (below) |
 | `h` / `l`  | PR pages          | close / open the active file (vim: left folds, right unfolds), then pin it back to the top; `l` on an open file is how you scroll the cursor back into view                             |
 | `U`        | PR pages          | switch the diff layout, unified ⇄ split, through GitHub's diff view settings (GitHub keeps the choice)                                                                                  |
 | `c` / `f`  | PR pages          | jump to the Conversation / Files changed tab                                                                                                                                            |
@@ -20,6 +20,21 @@ and `v` act on it.
 
 Autoscroll starts on its own when a Files changed page has rendered its
 files; the popup tab turns that off (stored as `exorun-github-autoscroll`).
+
+## Quiet review
+
+While autoscroll runs, the engine's "exo keystroke" toasts are muted (the
+`keystroke` toast family): a run of marks, steps and folds leaves nothing to
+dismiss, and the ring moving is the feedback. The outcome toasts (`Closed
+src/a.ts`, `Wrapped to the first unviewed file`, the sweep's counts) still
+show; they replace one another instead of stacking. A fresh tab starts quiet.
+Turning autoscroll off and on again — the key or the popup button — flips it
+for the rest of the tab's life, and the "Autoscroll enabled" toast says which
+way it went: `Keystroke toasts muted` or `Keystroke toasts on`. The auto-run
+and the implicit starts (stepping or marking while autoscroll is off) never
+flip it. Anything else can be muted for good from the popup's "Muted toasts"
+list; every toast here is tagged `github.<feature>.<outcome>`
+(`github.fold.opened`, `github.sweep.marked`, `github.autoscroll.on`, …).
 
 ## How it scrolls
 

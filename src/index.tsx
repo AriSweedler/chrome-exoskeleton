@@ -3,6 +3,7 @@
 import {onDispose} from '@exo/lib/lifecycle';
 import {ShowToastAction, showToastPayload} from '@exo/lib/actions/show-toast.action';
 import {Notifications} from '@exo/lib/toast-notification';
+import {syncToastMutes} from '@exo/lib/toast-mutes';
 import {keybindings} from '@exo/lib/keybindings';
 
 /**
@@ -12,6 +13,9 @@ import {keybindings} from '@exo/lib/keybindings';
 
 // The keybinding and toast libraries are standalone; this is where they meet.
 keybindings.setNotifier(Notifications);
+
+// The reader's stored mute filters (edited in the popup) apply on every page.
+const stopMuteSync = syncToastMutes();
 
 // Page side of plugin discovery. `bin/exo link` creates the src/plugins/<name>
 // mounts this glob reads; each page module self-registers its keybindings,
@@ -37,6 +41,7 @@ keybindings.listen();
 // When a newer copy of this script takes over the page, this one lets go of
 // the keyboard and its toasts.
 onDispose(() => keybindings.unlisten());
+onDispose(stopMuteSync);
 onDispose(() => Notifications.teardown());
 
 // The e2e harness waits for this line before driving a page.

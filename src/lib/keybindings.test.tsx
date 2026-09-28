@@ -832,3 +832,67 @@ describe('when guards, silent bindings, and interactive help', () => {
         expect(row.style.background).toBe('transparent');
     });
 });
+
+describe('banner tags', () => {
+    let registry: KeybindingRegistry;
+    const notifier = {show: vi.fn()};
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        registry = new KeybindingRegistry();
+        registry.setNotifier(notifier);
+        registry.listen();
+    });
+
+    afterEach(() => {
+        registry.unlisten();
+    });
+
+    const press = (key: string, init: KeyboardEventInit = {}) =>
+        document.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, ...init}));
+
+    it('tags a fired binding keystroke.fired plus its context as a slug', () => {
+        registry.register({
+            key: 'v',
+            description: 'Toggle Viewed',
+            context: 'GitHub PR review',
+            handler: vi.fn(),
+        });
+        press('v');
+        expect(notifier.show).toHaveBeenCalledWith(
+            expect.objectContaining({tag: 'keystroke.fired.github-pr-review'}),
+        );
+    });
+
+    it('tags a binding without a context keystroke.fired', () => {
+        registry.register({key: 'x', description: 'Do the thing', handler: vi.fn()});
+        press('x');
+        expect(notifier.show).toHaveBeenCalledWith(
+            expect.objectContaining({tag: 'keystroke.fired'}),
+        );
+    });
+
+    it('tags the pending-sequence banner keystroke.pending', () => {
+        registry.register({sequence: ['g', 'g'], description: 'Top', handler: vi.fn()});
+        press('g');
+        expect(notifier.show).toHaveBeenCalledWith(
+            expect.objectContaining({tag: 'keystroke.pending'}),
+        );
+    });
+
+    it('tags the pass-through arm and its confirmation keystroke.pass-through', () => {
+        press('v', {ctrlKey: true});
+        expect(notifier.show).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({tag: 'keystroke.pass-through'}),
+        );
+        press('x');
+        expect(notifier.show).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({
+                tag: 'keystroke.pass-through',
+                markdown: 'passed `x` to the page',
+            }),
+        );
+    });
+});

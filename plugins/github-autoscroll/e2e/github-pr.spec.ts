@@ -440,6 +440,33 @@ test.describe('the review cursor (Files changed)', () => {
         await expectToast(page, 'Unified diff');
     });
 
+    test('review mode is quiet: keys announce nothing while autoscroll runs; off and on again turns the announcements back on', async ({
+        context,
+    }) => {
+        const page = await openChanges(context);
+        await waitForKeybindings(page);
+        await expectToast(page, 'Keystroke toasts muted');
+        const announcements = page.locator('.chrome-ext-notification', {hasText: 'exo keystroke'});
+
+        // A step and a fold: the ring moves and the outcome toasts show, but
+        // no "exo keystroke" toast joins them.
+        await page.keyboard.press('Shift+J');
+        await expect.poll(() => activeAnchor(page)).toBe(THIRD);
+        await page.keyboard.press('h');
+        await expectToast(page, `Closed ${PR_FILES[2]!.path}`);
+        await expect(announcements).toHaveCount(0);
+
+        // Off and on again: the restart flips quiet review off.
+        await page.keyboard.press('a');
+        await expectToast(page, 'GitHub PR Autoscroll disabled');
+        await page.keyboard.press('a');
+        await expectToast(page, 'Keystroke toasts on');
+        await page.keyboard.press('Shift+K');
+        await expect(
+            page.locator('.chrome-ext-notification', {hasText: 'Previous unviewed file'}),
+        ).toHaveCount(1);
+    });
+
     test('a stops autoscroll and drops the ring', async ({context}) => {
         const page = await openChanges(context);
 

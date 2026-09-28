@@ -3,6 +3,8 @@ import {Notifications, type NotificationType, type ToastHandle} from '@exo/lib/t
 import {theme} from '@exo/theme/default';
 
 export interface ShowToastPayload {
+    /** The toast's hierarchical tag (see NotificationOptions.tag). */
+    tag: string;
     message: string;
     type?: NotificationType;
     duration?: number;
@@ -20,6 +22,7 @@ export class ShowToastAction extends Action<ShowToastPayload, void> {
  */
 export function showToastPayload(payload: ShowToastPayload): ToastHandle {
     return Notifications.show({
+        tag: payload.tag,
         message: payload.message,
         type: payload.type,
         children: payload.detail ? (

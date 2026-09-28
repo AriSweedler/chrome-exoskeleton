@@ -10,7 +10,7 @@ import {Notifications} from '@exo/lib/toast-notification';
 // Outcome toast for the demo 'gg' chord — the e2e suite asserts on it to
 // prove multi-keystroke sequences fire end-to-end.
 export function announceSequenceDemo(): void {
-    Notifications.show({message: 'Playground sequence: gg'});
+    Notifications.show({tag: 'playground.sequence', message: 'Playground sequence: gg'});
 }
 
 export function typeXxxAndScrollToBottom(): void {
@@ -24,7 +24,10 @@ export function typeXxxAndScrollToBottom(): void {
         editableBody.focus();
         editableDoc!.execCommand('insertText', false, 'XXX');
     } else {
-        Notifications.show({message: 'Could not find Google Docs editor'});
+        Notifications.show({
+            tag: 'playground.docs.no-editor',
+            message: 'Could not find Google Docs editor',
+        });
         return;
     }
 
@@ -34,5 +37,5 @@ export function typeXxxAndScrollToBottom(): void {
         scroller.scrollTop = scroller.scrollHeight;
     }
 
-    Notifications.show({message: 'Typed XXX and scrolled to bottom'});
+    Notifications.show({tag: 'playground.docs.typed', message: 'Typed XXX and scrolled to bottom'});
 }

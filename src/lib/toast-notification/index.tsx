@@ -15,6 +15,14 @@ export enum NotificationType {
 export type ToastSize = keyof typeof theme.toast.fontSize;
 
 export interface NotificationOptions {
+    /**
+     * What kind of toast this is, as a dotted hierarchical name in lowercase:
+     * `keystroke.fired`, `github.fold.opened`. A mute filter (see `mute`)
+     * names a tag or any of its ancestors, so `github.fold` silences every
+     * fold toast and `github` every GitHub one. Hovering a toast reveals its
+     * tag, and every toast logs it.
+     */
+    tag: string;
     /** Plain-text body. Used for logging even when `markdown`/`children` render the UI. */
     message?: string;
     /** Markdown body (a small subset). Rendered to plain DOM — safe in content scripts. */
@@ -33,6 +41,33 @@ export interface NotificationOptions {
 /** Handle returned by Notifications.show, letting the caller dismiss it early. */
 export interface ToastHandle {
     dismiss: () => void;
+}
+
+/** True when `filter` names `tag` itself or one of its dotted ancestors. */
+function filterCovers(filter: string, tag: string): boolean {
+    return tag === filter || tag.startsWith(`${filter}.`);
+}
+
+/**
+ * The stand-in for a toast that a mute filter kept off screen. It keeps the
+ * toast's contract without its pixels: the countdown still runs (a caller's
+ * cycling window or arm still expires on time) and `onDismiss` still fires
+ * exactly once, whether the clock runs out or the handle dismisses it.
+ */
+function mutedToast(duration: number, onDismiss: (() => void) | undefined): ToastHandle {
+    let done = false;
+    const finish = () => {
+        if (done) return;
+        done = true;
+        onDismiss?.();
+    };
+    const timer = window.setTimeout(finish, duration);
+    return {
+        dismiss: () => {
+            window.clearTimeout(timer);
+            finish();
+        },
+    };
 }
 
 /**
@@ -114,9 +149,11 @@ function attachInteractionState(
         cleanupPin: () => void;
         isDismissing: () => boolean;
         colors: {base: string; hover: string; opacity: number};
+        /** Revealed while the toast is held: the name a mute filter would use. */
+        tagLabel: HTMLElement;
     },
 ) {
-    const {pin, cleanupPin, isDismissing, colors} = opts;
+    const {pin, cleanupPin, isDismissing, colors, tagLabel} = opts;
     let hovered = false;
     let paused = false;
     let pausedLabel: HTMLElement | null = null;
@@ -128,6 +165,7 @@ function attachInteractionState(
         notification.style.opacity = held ? '1' : String(colors.opacity);
         notification.style.background = held ? colors.hover : colors.base;
         notification.style.boxShadow = held ? theme.shadow.overlay : theme.shadow.sm;
+        tagLabel.style.opacity = held ? '1' : '0';
 
         if (paused && !pausedLabel) {
             pausedLabel = document.createElement('span');
@@ -173,12 +211,51 @@ export class Notifications {
     private static reactRoots = new WeakMap<HTMLElement, Root>();
     private static dismissCallbacks = new WeakMap<HTMLElement, () => void>();
     private static dismissing = new WeakSet<HTMLElement>();
+    /**
+     * Active mute filters with how many holders each has. Two independent
+     * callers (a stored preference, a plugin's mode) may mute the same
+     * prefix; the filter lifts only when the last of them releases it.
+     */
+    private static mutes = new Map<string, number>();
+
+    /**
+     * Keep every toast tagged `filter`, or tagged under it (`filter.…`), off
+     * screen until the returned release is called. Releasing twice is a no-op.
+     */
+    static mute(filter: string): () => void {
+        this.mutes.set(filter, (this.mutes.get(filter) ?? 0) + 1);
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            const holders = (this.mutes.get(filter) ?? 1) - 1;
+            if (holders > 0) {
+                this.mutes.set(filter, holders);
+            } else {
+                this.mutes.delete(filter);
+            }
+        };
+    }
+
+    /** Would a toast tagged `tag` be kept off screen right now? */
+    static isMuted(tag: string): boolean {
+        for (const filter of this.mutes.keys()) {
+            if (filterCovers(filter, tag)) return true;
+        }
+        return false;
+    }
+
+    /** The mute filters currently held, for display and debugging. */
+    static mutedFilters(): string[] {
+        return Array.from(this.mutes.keys()).sort();
+    }
 
     /**
      * Show a toast notification.
      */
     static show(options: NotificationOptions): ToastHandle {
         const {
+            tag,
             message,
             markdown,
             type = NotificationType.Success,
@@ -191,7 +268,11 @@ export class Notifications {
             onDismiss,
         } = options;
 
-        console.log(`[exo toast] ${markdown ?? message ?? ''}`);
+        if (this.isMuted(tag)) {
+            console.log(`[exo toast] (muted) ${tag}: ${markdown ?? message ?? ''}`);
+            return mutedToast(duration, onDismiss);
+        }
+        console.log(`[exo toast] ${tag}: ${markdown ?? message ?? ''}`);
 
         this.injectKeyframes();
 
@@ -235,11 +316,14 @@ export class Notifications {
 
         const hoverBg = backgroundColor.replace(/[\d.]+\)$/, '1)');
         this.attachClickHandler(notification, onClick);
+        const tagLabel = this.createTagLabel(tag);
+        notification.appendChild(tagLabel);
         attachInteractionState(notification, timerBar, {
             pin,
             cleanupPin,
             isDismissing,
             colors: {base: backgroundColor, hover: hoverBg, opacity},
+            tagLabel,
         });
 
         if (onDismiss) {
@@ -407,6 +491,31 @@ export class Notifications {
         return el;
     }
 
+    /**
+     * The toast's tag, in the bottom-left corner: invisible until the toast is
+     * held (hovered or paused), when the reader is deciding what to do with
+     * it — and the tag is the name a mute filter takes. The text is drawn by
+     * CSS from `data-tag` (see injectKeyframes), so it is presentation only:
+     * not part of the toast's text content, not read out.
+     */
+    private static createTagLabel(tag: string): HTMLElement {
+        const label = document.createElement('span');
+        label.className = 'exo-toast-tag';
+        label.dataset.tag = tag;
+        label.style.cssText = `
+            position: absolute;
+            bottom: 4px;
+            left: 8px;
+            font-size: 0.55em;
+            font-family: ${theme.toast.code.fontFamily};
+            color: ${theme.toast.closeBtnDefault};
+            opacity: 0;
+            transition: opacity ${theme.toast.fadeMs}ms ease-out;
+            pointer-events: none;
+        `;
+        return label;
+    }
+
     private static createTimerBar(duration: number): HTMLElement {
         const timerBar = document.createElement('div');
         timerBar.className = 'exo-toast-timer-bar';
@@ -457,6 +566,7 @@ export class Notifications {
                 from { width: 0%; }
                 to { width: 100%; }
             }
+            .exo-toast-tag::after { content: attr(data-tag); }
         `;
         document.head.appendChild(style);
         this.keyframesInjected = true;

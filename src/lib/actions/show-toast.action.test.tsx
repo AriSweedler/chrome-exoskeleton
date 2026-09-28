@@ -23,7 +23,7 @@ describe('showToastPayload', () => {
     });
 
     it('renders the message without detail', () => {
-        showToastPayload({message: 'Copied!'});
+        showToastPayload({tag: 'test', message: 'Copied!'});
 
         const notification = container.querySelector('.chrome-ext-notification') as HTMLElement;
         expect(notification.textContent).toContain('Copied!');
@@ -31,6 +31,7 @@ describe('showToastPayload', () => {
 
     it('renders the message headline alongside the detail block', async () => {
         showToastPayload({
+            tag: 'test',
             message: 'Nothing to copy here',
             detail: 'Tried: staging, production',
         });

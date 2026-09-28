@@ -1,0 +1,94 @@
+.toast-filters {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.toast-filters h2 {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.toast-filters-hint {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-tertiary);
+}
+
+.toast-filters code {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.toast-filters-list {
+    list-style: none;
+    margin: 0 0 8px 0;
+    padding: 0;
+}
+
+.toast-filters-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.toast-filters .toast-filter-remove {
+    width: auto;
+    padding: 0 6px;
+    background: none;
+    color: var(--text-tertiary);
+    font-size: 16px;
+    line-height: 1;
+}
+
+.toast-filters .toast-filter-remove:hover {
+    color: var(--error-text);
+}
+
+.toast-filters-add {
+    display: flex;
+    gap: 6px;
+}
+
+.toast-filters-add input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.toast-filters-add input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.toast-filters-add button {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: white;
+    background: var(--accent-blue);
+}
+
+.toast-filters-add button:hover:not(:disabled) {
+    background: var(--accent-blue-hover);
+}
+
+.toast-filters-add button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

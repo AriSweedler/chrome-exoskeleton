@@ -31,6 +31,7 @@ export function withEnvRow(
 
 export function makeEnvToast(envName: string): ShowToastPayload {
     return {
+        tag: 'environment.switch',
         message: `Navigating to ${envName}`,
         type: NotificationType.Success,
         duration: 2000,

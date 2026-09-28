@@ -10,7 +10,9 @@
  * - Context-aware filtering (skips INPUT/TEXTAREA elements)
  *
  * This library is standalone: it has no imports. Feedback banners go through
- * a pluggable notifier (see setNotifier) and default to silent.
+ * a pluggable notifier (see setNotifier) and default to silent. Every banner
+ * carries a tag under `keystroke` so a host can mute them as a family:
+ * `keystroke.fired[.<context>]`, `keystroke.pending`, `keystroke.pass-through`.
  */
 
 /** Handle to an on-screen notification, so the registry can retract it. */
@@ -25,10 +27,30 @@ export interface NotifierHandle {
  */
 export interface KeybindingNotifier {
     show(opts: {
+        /** Dotted hierarchical name of the banner's kind; see BANNER_TAG. */
+        tag: string;
         markdown: string;
         duration?: number;
         onDismiss?: () => void;
     }): NotifierHandle | null;
+}
+
+// The tags the registry's banners carry, all under one root so a host can
+// mute them together. A fired binding's tag ends with its context slug
+// (`keystroke.fired.github-pr-review`) so one site's announcements can be
+// muted without the others'.
+const BANNER_TAG = {
+    fired: 'keystroke.fired',
+    pending: 'keystroke.pending',
+    passThrough: 'keystroke.pass-through',
+} as const;
+
+/** A help-overlay context as a tag segment: lowercase, runs of anything else become one dash. */
+function tagSegment(context: string): string {
+    return context
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 }
 
 // Inline-code markdown span, e.g. `gg`.
@@ -278,7 +300,7 @@ export class KeybindingRegistry {
                 }
                 const passed = this.formatKeybinding(parts);
                 this.disarmPassThrough();
-                this.notify(`passed ${code(passed)} to the page`);
+                this.notify(BANNER_TAG.passThrough, `passed ${code(passed)} to the page`);
                 return;
             }
 
@@ -300,6 +322,7 @@ export class KeybindingRegistry {
                 // The banner IS the arm and its countdown IS the disarm
                 // clock — pausing the banner genuinely holds the arm open.
                 this.passThroughArm = this.showTtlBanner(
+                    BANNER_TAG.passThrough,
                     '**pass-through** — next key goes to the page',
                     PASS_THROUGH_TTL_MS,
                     () => this.disarmPassThrough(),
@@ -419,6 +442,7 @@ export class KeybindingRegistry {
         // open, and its dismissal — countdown, click, or reset — expires
         // the pending sequence.
         this.pendingToast = this.showTtlBanner(
+            BANNER_TAG.pending,
             `**pending** ${code(this.formatSequenceSignatures(steps))} — waiting for the next key`,
             SEQUENCE_TTL_MS,
             () => this.resetPendingSequence(),
@@ -477,11 +501,12 @@ export class KeybindingRegistry {
      * failure must never block the keystroke that triggered it.
      */
     private notify(
+        tag: string,
         markdown: string,
         opts: {duration?: number; onDismiss?: () => void} = {},
     ): NotifierHandle | null {
         try {
-            return this.notifier?.show({markdown, ...opts}) ?? null;
+            return this.notifier?.show({tag, markdown, ...opts}) ?? null;
         } catch (err) {
             console.error('[exo keybindings] failed to show notification', err);
             return null;
@@ -495,8 +520,13 @@ export class KeybindingRegistry {
      * `onExpire` exactly once. When no banner can carry it (no notifier, or
      * show threw), a bare timer keeps the expiry so state never sticks.
      */
-    private showTtlBanner(markdown: string, ttlMs: number, onExpire: () => void): NotifierHandle {
-        const banner = this.notify(markdown, {duration: ttlMs, onDismiss: onExpire});
+    private showTtlBanner(
+        tag: string,
+        markdown: string,
+        ttlMs: number,
+        onExpire: () => void,
+    ): NotifierHandle {
+        const banner = this.notify(tag, markdown, {duration: ttlMs, onDismiss: onExpire});
         if (banner) return banner;
         const timer = window.setTimeout(onExpire, ttlMs);
         return {
@@ -525,7 +555,9 @@ export class KeybindingRegistry {
             lines.push(keybinding.description);
         }
 
-        this.notify(lines.join('\n'));
+        const context = keybinding.context ? tagSegment(keybinding.context) : '';
+        const tag = context ? `${BANNER_TAG.fired}.${context}` : BANNER_TAG.fired;
+        this.notify(tag, lines.join('\n'));
     }
 
     /**

@@ -40,42 +40,99 @@ const NO_FILES_MESSAGE = "No files found. Make sure you're on a GitHub PR change
 
 const onPRPage = (): boolean => isGitHubPRPage(window.location.href);
 
+const noFilesToast = () =>
+    Notifications.show({
+        tag: 'github.autoscroll.no-files',
+        message: NO_FILES_MESSAGE,
+        type: NotificationType.Error,
+    });
+
+// --- quiet review -----------------------------------------------------------
+
+/** The toast family the keybinding engine announces every fired key under. */
+const KEYSTROKE_TOASTS = 'keystroke';
+
+/**
+ * Review mode is quiet: while autoscroll runs, the engine's "exo keystroke"
+ * toasts are muted, so a run of marks, steps and folds leaves nothing to
+ * dismiss — the ring moving is the feedback. The reader flips this by
+ * turning autoscroll off and on again (the key or the popup button); the
+ * choice holds for the rest of the tab's life, and a fresh tab starts quiet.
+ */
+let quietReview = true;
+/** Set once autoscroll has run in this tab: a later start by the reader is a restart. */
+let hasRun = false;
+let unmuteKeystrokes: (() => void) | null = null;
+
+function syncQuietReview(): void {
+    unmuteKeystrokes?.();
+    unmuteKeystrokes =
+        autoscroll.isRunning() && quietReview ? Notifications.mute(KEYSTROKE_TOASTS) : null;
+}
+
 // --- autoscroll -----------------------------------------------------------
 
 function announceAdvance(outcome: autoscroll.AdvanceOutcome): void {
     if (outcome.kind === 'all-viewed') {
-        Notifications.show({message: 'All files viewed', replace: true});
+        Notifications.show({
+            tag: 'github.cursor.all-viewed',
+            message: 'All files viewed',
+            replace: true,
+        });
     } else if (outcome.wrapped) {
-        Notifications.show({message: 'Wrapped to the first unviewed file', replace: true});
+        Notifications.show({
+            tag: 'github.cursor.wrapped',
+            message: 'Wrapped to the first unviewed file',
+            replace: true,
+        });
     }
     // An ordinary advance announces itself: the ring moves and the page scrolls.
 }
 
-/** Start autoscroll if it isn't running. True when it is running afterward. */
-function startAutoscroll(): boolean {
+/**
+ * Start autoscroll if it isn't running. True when it is running afterward.
+ * `by: 'reader'` is an explicit start (the toggle key, the popup button): when
+ * autoscroll has run before in this tab, that is the reader turning it off
+ * and on again, which flips quiet review. The auto-run and the implicit
+ * starts (stepping or marking while off) never flip it.
+ */
+function startAutoscroll(by: 'auto' | 'reader'): boolean {
     if (autoscroll.isRunning()) return true;
     if (!autoscroll.start({onAdvance: announceAdvance})) return false;
+    if (by === 'reader' && hasRun) quietReview = !quietReview;
+    hasRun = true;
+    syncQuietReview();
     const cursor = getActiveFile();
+    const where = cursor ? `cursor on ${cursor.path}` : 'every file is viewed';
     Notifications.show({
-        message: cursor
-            ? `GitHub PR Autoscroll enabled — cursor on ${cursor.path}`
-            : 'GitHub PR Autoscroll enabled — every file is viewed',
+        tag: 'github.autoscroll.on',
+        markdown: `GitHub PR Autoscroll enabled — ${where}\nKeystroke toasts ${quietReview ? 'muted' : 'on'}`,
     });
     return true;
 }
 
+/** Stop autoscroll and lift the quiet-review mute with it. Idempotent. */
+function endReview(): void {
+    autoscroll.stop();
+    syncQuietReview();
+}
+
 function stopAutoscroll(): void {
     if (!autoscroll.isRunning()) return;
-    autoscroll.stop();
-    Notifications.show({message: 'GitHub PR Autoscroll disabled', opacity: 0.5});
+    endReview();
+    Notifications.show({
+        tag: 'github.autoscroll.off',
+        message: 'GitHub PR Autoscroll disabled',
+        opacity: 0.5,
+    });
 }
 
 /** The one label-less surface that genuinely means "toggle". */
 function toggleAutoscroll(): void {
     if (autoscroll.isRunning()) {
         stopAutoscroll();
-    } else if (!startAutoscroll()) {
-        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+    } else if (!startAutoscroll('reader')) {
+        noFilesToast();
     }
 }
 
@@ -89,15 +146,15 @@ async function autorun(): Promise<void> {
     if (!(await isTabEnabled(TAB_ID))) return;
     const rendered = await waitFor(() => getFiles().length > 0, {intervalMs: 250, attempts: 40});
     if (!rendered || autoscroll.isRunning() || !isGitHubPRChangesPage(window.location.href)) return;
-    startAutoscroll();
+    startAutoscroll('auto');
 }
 
 // --- the cursor ---------------------------------------------------------------
 
 /** Step to the next / previous unviewed file. Starts autoscroll if it is off. */
 function stepCursor(direction: 'next' | 'previous'): void {
-    if (!autoscroll.isRunning() && !startAutoscroll()) {
-        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+    if (!autoscroll.isRunning() && !startAutoscroll('auto')) {
+        noFilesToast();
         return;
     }
     announceAdvance(autoscroll.moveCursor(getActiveFile(), direction));
@@ -108,13 +165,14 @@ function stepCursor(direction: 'next' | 'previous'): void {
  * other, so autoscroll carries the cursor on to the next unviewed file.
  */
 function toggleViewedOnActive(): void {
-    if (!autoscroll.isRunning() && !startAutoscroll()) {
-        Notifications.show({message: NO_FILES_MESSAGE, type: NotificationType.Error});
+    if (!autoscroll.isRunning() && !startAutoscroll('auto')) {
+        noFilesToast();
         return;
     }
     const file = getActiveFile();
     if (!file) {
         Notifications.show({
+            tag: 'github.cursor.no-active-file',
             message: 'No active file',
             type: NotificationType.Error,
             replace: true,
@@ -123,6 +181,7 @@ function toggleViewedOnActive(): void {
     }
     if (!setViewed(file, !isViewed(file))) {
         Notifications.show({
+            tag: 'github.cursor.no-viewed-toggle',
             message: 'The active file has no Viewed toggle',
             type: NotificationType.Error,
             replace: true,
@@ -138,12 +197,14 @@ async function switchDiffLayout(): Promise<void> {
     switch (outcome.kind) {
         case 'switched':
             Notifications.show({
+                tag: 'github.layout.switched',
                 message: outcome.to === 'split' ? 'Split diff' : 'Unified diff',
                 replace: true,
             });
             return;
         case 'no-settings-button':
             Notifications.show({
+                tag: 'github.layout.no-settings-button',
                 message: "No diff view settings here — this is the Files changed toolbar's gear",
                 type: NotificationType.Error,
                 replace: true,
@@ -151,6 +212,7 @@ async function switchDiffLayout(): Promise<void> {
             return;
         case 'no-layout-items':
             Notifications.show({
+                tag: 'github.layout.no-layout-items',
                 message: 'The diff view settings menu has no Layout items',
                 type: NotificationType.Error,
                 replace: true,
@@ -163,8 +225,10 @@ async function switchDiffLayout(): Promise<void> {
 function fold(action: FoldAction): void {
     const path = getActiveFile()?.path;
     const outcome = foldActiveFile(action);
+    // Every fold toast is tagged by its outcome: `github.fold.<outcome>`.
+    const tag = `github.fold.${outcome}`;
     const error = (message: string) =>
-        Notifications.show({message, type: NotificationType.Error, replace: true});
+        Notifications.show({tag, message, type: NotificationType.Error, replace: true});
     switch (outcome) {
         case 'no-active-file':
             error('No active file — press a to start autoscroll');
@@ -174,6 +238,7 @@ function fold(action: FoldAction): void {
             return;
         case 'unchanged':
             Notifications.show({
+                tag,
                 message: `${path} is already ${action === 'close' ? 'closed' : 'open'}`,
                 replace: true,
             });
@@ -182,6 +247,7 @@ function fold(action: FoldAction): void {
         case 'closed':
             // The fold may be off screen while it pins back: say which file.
             Notifications.show({
+                tag,
                 message: `${outcome === 'opened' ? 'Opened' : 'Closed'} ${path}`,
                 replace: true,
             });
@@ -201,6 +267,7 @@ function markAutoHiddenFilesAndAdvance(): void {
     if (marked > 0 || alreadyViewed > 0) {
         const alreadyViewedInfo = alreadyViewed > 0 ? ` (${alreadyViewed} already viewed)` : '';
         Notifications.show({
+            tag: 'github.sweep.marked',
             message: `Marked ${marked} auto-hidden files as viewed${alreadyViewedInfo}`,
             replace: true,
         });
@@ -212,6 +279,7 @@ function markAutoHiddenFilesAndAdvance(): void {
 function showAutoHiddenFiles(): void {
     const {unmarked} = unmarkAutoHiddenFilesViewed();
     Notifications.show({
+        tag: 'github.sweep.showed',
         message:
             unmarked > 0
                 ? `Showed ${unmarked} auto-hidden files (unmarked as viewed)`
@@ -378,7 +446,7 @@ function onNavigate(): void {
     // Leaving the Files changed view ends the session quietly; the sweep's
     // memory is per page too.
     if (!isGitHubPRChangesPage(window.location.href)) {
-        autoscroll.stop();
+        endReview();
         forgetSweep();
     }
     void autorun();
@@ -403,12 +471,7 @@ function registerMessageHandlers(): void {
             // silent inverse action. Idempotent; responds with the real state.
             if (message.type === 'GITHUB_AUTOSCROLL_SET') {
                 if (message.active) {
-                    if (!startAutoscroll()) {
-                        Notifications.show({
-                            message: NO_FILES_MESSAGE,
-                            type: NotificationType.Error,
-                        });
-                    }
+                    if (!startAutoscroll('reader')) noFilesToast();
                 } else {
                     stopAutoscroll();
                 }
@@ -438,7 +501,7 @@ function initialize(): void {
     // over the page: stop watching and drop the cursor.
     onDispose(() => {
         stopWatching();
-        autoscroll.stop();
+        endReview();
     });
 }
 

@@ -23,6 +23,7 @@ local dotfiles tier) and are never committed here.
 - Tests are colocated (`x.test.ts` next to `x.ts`). Real-DOM snapshots live in a plugin's `examples/` and are gitignored; suites `skipIf` when none are saved.
 - Plugin e2e specs live in `<plugin>/e2e/*.spec.ts` and import `@exo-e2e/fixtures`, `@exo-e2e/helpers`.
 - Colors: `@exo/theme/default` for shared tokens, HSLA; a color one plugin uses is a local const in that plugin.
+- Every toast has a `tag`: dotted, lowercase, `<plugin>.<feature>.<outcome>`. A mute filter names a tag or an ancestor (`Notifications.mute`, the popup's list); the keybinding engine's banners are `keystroke.*`. See docs/writing-a-plugin.md § Toasts.
 
 ## Repo hygiene
 - This repo is public. No hostnames, ids or ticket numbers from any employer; fixtures use `example.com`, `exo-test/repo`, neutral file paths.

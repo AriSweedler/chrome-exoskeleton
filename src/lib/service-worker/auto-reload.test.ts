@@ -209,6 +209,7 @@ describe('auto-reload', () => {
             expect(toasts[toasts.length - 1]?.[1]).toEqual({
                 type: 'SHOW_TOAST',
                 payload: {
+                    tag: 'system.rebuild',
                     message: expect.stringMatching(/^New build loaded \(built \d\d:\d\d:\d\d\)$/),
                 },
             });

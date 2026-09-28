@@ -28,6 +28,7 @@ type Loaded = {
     cursor: typeof import('@exo/plugins/github-autoscroll/cursor');
     files: typeof import('@exo/plugins/github-autoscroll/files');
     keybindings: (typeof import('@exo/lib/keybindings'))['keybindings'];
+    notifications: (typeof import('@exo/lib/toast-notification'))['Notifications'];
 };
 
 /** Every module set a test loaded; each one's key listener is detached after the test. */
@@ -45,7 +46,11 @@ async function load(href: string): Promise<Loaded> {
     const cursor = await import('@exo/plugins/github-autoscroll/cursor');
     const files = await import('@exo/plugins/github-autoscroll/files');
     const {keybindings} = await import('@exo/lib/keybindings');
-    const modules = {autoscroll, cursor, files, keybindings};
+    const {Notifications} = await import('@exo/lib/toast-notification');
+    // The content-script entry (src/index.tsx) is what joins the two libraries;
+    // it is not loaded here, so join them the same way.
+    keybindings.setNotifier(Notifications);
+    const modules = {autoscroll, cursor, files, keybindings, notifications: Notifications};
     loaded.push(modules);
     return modules;
 }
@@ -57,6 +62,12 @@ function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
 }
 
 const toastText = () => document.getElementById('exo-notification-container')?.textContent ?? '';
+
+/** How many "exo keystroke" announcements the engine has put on screen. */
+const announcements = () =>
+    Array.from(document.querySelectorAll('.chrome-ext-notification')).filter((toast) =>
+        toast.textContent?.includes('exo keystroke'),
+    ).length;
 
 describe('github-autoscroll page module', () => {
     let messageListeners: ChromeMessageListener[] = [];
@@ -331,6 +342,90 @@ describe('github-autoscroll page module', () => {
             await vi.waitFor(() =>
                 expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({top: 0})),
             );
+        });
+    });
+
+    describe('quiet review', () => {
+        /** Open Files changed and wait for the auto-run. */
+        async function openChanges(): Promise<Loaded> {
+            const modules = await loadWithFiles(PR_CHANGES);
+            await vi.waitFor(() => expect(modules.autoscroll.isRunning()).toBe(true), {
+                timeout: 2000,
+            });
+            return modules;
+        }
+
+        it('the auto-run mutes keystroke toasts; the outcome toasts still show', async () => {
+            const {cursor, notifications} = await openChanges();
+            expect(toastText()).toContain('Keystroke toasts muted');
+            expect(notifications.isMuted('keystroke.fired.github-pr-review')).toBe(true);
+
+            press('J', {shiftKey: true});
+            await vi.waitFor(() => expect(cursor.getActiveFile()?.path).toBe('gen/alpha.json'));
+            press('h');
+            await vi.waitFor(() => expect(toastText()).toContain('Closed gen/alpha.json'));
+            expect(announcements()).toBe(0);
+        });
+
+        it('a first start by the key is quiet too', async () => {
+            const {autoscroll} = await loadWithFiles(PR_ROOT);
+            press('a');
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true));
+            expect(toastText()).toContain('Keystroke toasts muted');
+        });
+
+        it('turning autoscroll off lifts the mute; on again flips quiet review, each time', async () => {
+            const {autoscroll, notifications} = await openChanges();
+
+            press('a');
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(false));
+            expect(toastText()).toContain('GitHub PR Autoscroll disabled');
+            expect(notifications.isMuted('keystroke.fired')).toBe(false);
+            expect(announcements()).toBe(0); // the a that stopped it was announced under the mute
+
+            press('a'); // the restart: quiet review flips off
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true));
+            expect(toastText()).toContain('Keystroke toasts on');
+            expect(notifications.isMuted('keystroke.fired')).toBe(false);
+            const loud = announcements(); // that a announced itself
+            expect(loud).toBeGreaterThan(0);
+            press('J', {shiftKey: true});
+            await vi.waitFor(() => expect(announcements()).toBe(loud + 1));
+
+            press('a');
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(false));
+            press('a'); // and back to quiet
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(true));
+            expect(notifications.isMuted('keystroke.fired')).toBe(true);
+            const quiet = announcements();
+            press('J', {shiftKey: true});
+            press('h');
+            await vi.waitFor(() => expect(toastText()).toContain('Closed'));
+            expect(announcements()).toBe(quiet);
+        });
+
+        it('the popup button counts as the toggle too', async () => {
+            const {notifications} = await openChanges();
+            const respond = vi.fn();
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: false},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            listener()(
+                {type: 'GITHUB_AUTOSCROLL_SET', active: true},
+                {} as chrome.runtime.MessageSender,
+                respond,
+            );
+            expect(toastText()).toContain('Keystroke toasts on');
+            expect(notifications.isMuted('keystroke.fired')).toBe(false);
+        });
+
+        it('leaving Files changed lifts the mute with the session', async () => {
+            const {autoscroll, notifications} = await openChanges();
+            window.location.href = PR_ROOT;
+            await vi.waitFor(() => expect(autoscroll.isRunning()).toBe(false), {timeout: 2000});
+            expect(notifications.isMuted('keystroke.fired')).toBe(false);
         });
     });
 

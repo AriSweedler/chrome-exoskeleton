@@ -48,6 +48,7 @@ export function makeEnvCycleBinding({
             const target = next();
             if (!target) return;
             Notifications.show({
+                tag: 'environment.switch',
                 message: `Navigating to ${label(target)}`,
                 type: NotificationType.Success,
                 duration: 2000,

@@ -108,6 +108,37 @@ onDispose(stop);
 
 Keybindings and toasts are the framework's; they are taken care of.
 
+## Toasts and their tags
+
+Every toast names its kind: `tag` is required, a dotted hierarchical name in
+lowercase, `<plugin>.<feature>.<outcome>` by convention:
+
+```ts
+Notifications.show({tag: 'my-site.fold.opened', message: `Opened ${path}`});
+Notifications.show({tag: 'my-site.fold.no-active-file', message: 'No active file', type: NotificationType.Error});
+```
+
+The tag is what a **mute filter** names. A filter covers its own tag and
+everything under it: `my-site.fold` mutes both toasts above, `my-site` every
+toast of the plugin. The keybinding engine's own banners are tagged
+`keystroke.fired.<context-slug>` (the "exo keystroke" announcement, the
+context being the binding's help-overlay group), `keystroke.pending` and
+`keystroke.pass-through`, so `keystroke` silences all of them and
+`keystroke.fired.my-site` only one site's announcements. A muted toast paints
+nothing but keeps its contract: its `duration` still runs and `onDismiss`
+still fires, so a toast whose lifetime is a window (cycling, an armed prefix)
+keeps working unseen.
+
+Two things mute:
+
+- **The reader's standing list**, edited in the popup ("Muted toasts") and
+  stored once for every page. Holding a toast (hover, or right-click to pause
+  it) reveals its tag in the corner — that is the name to type.
+- **A plugin's mode**: `Notifications.mute(filter)` returns a release
+  function; hold it while the mode lasts and call it when the mode ends
+  (`github-autoscroll` mutes `keystroke` while a review runs). Filters are
+  counted, so two holders of one filter never unmute each other.
+
 ## tab.tsx: a popup tab
 
 ```tsx

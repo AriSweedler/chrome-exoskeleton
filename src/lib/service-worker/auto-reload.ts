@@ -129,7 +129,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 async function toastIn(tabId: number, message: string, attempts: number): Promise<boolean> {
     for (let attempt = 0; attempt < attempts; attempt++) {
         try {
-            await ShowToastAction.sendToTab(tabId, {message});
+            await ShowToastAction.sendToTab(tabId, {tag: 'system.rebuild', message});
             return true;
         } catch {
             if (attempt + 1 < attempts) await sleep(ANNOUNCE_RETRY_MS);

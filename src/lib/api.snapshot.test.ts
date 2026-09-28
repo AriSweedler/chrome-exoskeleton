@@ -25,6 +25,7 @@ const modules = {
     '@exo/lib/service-worker/navigate-with-toast': () =>
         import('@exo/lib/service-worker/navigate-with-toast'),
     '@exo/lib/storage': () => import('@exo/lib/storage'),
+    '@exo/lib/toast-mutes': () => import('@exo/lib/toast-mutes'),
     '@exo/lib/toast-notification': () => import('@exo/lib/toast-notification'),
     '@exo/lib/url': () => import('@exo/lib/url'),
     '@exo/lib/wait-for': () => import('@exo/lib/wait-for'),
@@ -108,6 +109,13 @@ describe('framework API surface', () => {
             ],
             "@exo/lib/storage": [
               "Storage",
+            ],
+            "@exo/lib/toast-mutes": [
+              "TOAST_MUTES_KEY",
+              "getToastMutes",
+              "normalizeToastFilter",
+              "setToastMutes",
+              "syncToastMutes",
             ],
             "@exo/lib/toast-notification": [
               "NotificationType",
