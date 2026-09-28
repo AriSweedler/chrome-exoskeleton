@@ -36,8 +36,11 @@ jobs:
             - name: exo check --e2e
               run: EXO_IGNORE_DIR_LOCAL=true zsh bin/exo check --e2e
 
+            # exo check --e2e builds into dist-e2e/, never dist/: a developer's loaded dist/
+            # reloads itself on every build. build_extension is the same for both, so this
+            # zip is exactly what the browser suite just ran.
             - name: Package the build
-              run: cd dist && zip -r ../extension.zip . && cd ..
+              run: cd dist-e2e && zip -r ../extension.zip .
 
             - uses: actions/upload-artifact@v6
               with:
