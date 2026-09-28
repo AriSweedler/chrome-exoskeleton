@@ -139,8 +139,8 @@ exo link && exo build
 ```
 
 If `package-lock.json` changed, `exo deps ci` first. Fresh machine:
-`new-machine apply chrome_exoskeleton` runs `exo deps ci` (wires the hooks) and
-`exo build`; `new-machine check` reports its verdicts. Then Load unpacked. On a
+`dotfiles apply chrome_exoskeleton` runs `exo deps ci` (wires the hooks) and
+`exo build`; `dotfiles healthcheck` reports its verdicts. Then Load unpacked. On a
 personal machine node must be on `PATH` (no `env.zsh`) and there is no
 denylist.
 
