@@ -161,6 +161,10 @@ A tab that needs to run something on the page defines a typed action
 `MyAction.sendToTab(...)`. Use `@exo/theme/default` for shared colors; a color
 only your plugin uses is a local constant.
 
+A tab whose advice is "press `?`" renders `HelpHint` from
+`@exo/lib/popup-tabs/HelpHint`: that sentence as a button that opens the
+overlay on the page, for pages that never let a keystroke through.
+
 ## A rich-link format
 
 Rich links are owned by the `richlink` plugin (Cmd+Shift+C). Your plugin adds

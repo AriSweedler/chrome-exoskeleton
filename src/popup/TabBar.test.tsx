@@ -158,7 +158,12 @@ describe('TabBar', () => {
         render(<TabBar />);
 
         expect(await screen.findByText(/No exo tools match this page/)).toBeInTheDocument();
-        expect(screen.queryByRole('button')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', {name: 'Never'})).not.toBeInTheDocument();
+        // The only button is the hint that opens the help overlay on the page.
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(
+            screen.getByRole('button', {name: /press \? on the page to see keybindings/i}),
+        ).toBeInTheDocument();
     });
 
     it('renders TabEnablementSection for tabs with enablementToggle', async () => {

@@ -9,6 +9,7 @@ import {describe, it, expect} from 'vitest';
 
 const modules = {
     '@exo/lib/actions/base-action': () => import('@exo/lib/actions/base-action'),
+    '@exo/lib/actions/show-help.action': () => import('@exo/lib/actions/show-help.action'),
     '@exo/lib/actions/show-toast.action': () => import('@exo/lib/actions/show-toast.action'),
     '@exo/lib/clipboard': () => import('@exo/lib/clipboard'),
     '@exo/lib/dom': () => import('@exo/lib/dom'),
@@ -18,6 +19,7 @@ const modules = {
     '@exo/lib/lifecycle': () => import('@exo/lib/lifecycle'),
     '@exo/lib/popup-tabs/tab-registry': () => import('@exo/lib/popup-tabs/tab-registry'),
     '@exo/lib/popup-tabs/environment-ui': () => import('@exo/lib/popup-tabs/environment-ui'),
+    '@exo/lib/popup-tabs/HelpHint': () => import('@exo/lib/popup-tabs/HelpHint'),
     '@exo/lib/popup-tabs/use-tab-enablement': () =>
         import('@exo/lib/popup-tabs/use-tab-enablement'),
     '@exo/lib/richlink': () => import('@exo/lib/richlink'),
@@ -42,6 +44,9 @@ describe('framework API surface', () => {
           {
             "@exo/lib/actions/base-action": [
               "Action",
+            ],
+            "@exo/lib/actions/show-help.action": [
+              "ShowHelpAction",
             ],
             "@exo/lib/actions/show-toast.action": [
               "ShowToastAction",
@@ -75,6 +80,10 @@ describe('framework API surface', () => {
               "onDispose",
               "replacedEventName",
               "retireIfInvalidated",
+            ],
+            "@exo/lib/popup-tabs/HelpHint": [
+              "HelpHint",
+              "openHelpOnActiveTab",
             ],
             "@exo/lib/popup-tabs/environment-ui": [
               "EnvButton",

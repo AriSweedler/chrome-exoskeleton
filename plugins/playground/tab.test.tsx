@@ -28,12 +28,14 @@ describe('Playground Tab', () => {
         expect(tab).toBeUndefined();
     });
 
-    it('renders component with keybinding hint', () => {
+    it('renders the keybinding hint as a button that opens the help overlay', () => {
         const tabs = TabRegistry.getVisibleTabs(GDOC_URL);
         const tab = tabs.find((t) => t.id === 'playground')!;
         const Component = tab.component;
         render(<Component />);
         expect(screen.getByText('Playground')).toBeDefined();
-        expect(screen.getByText('?')).toBeDefined();
+        expect(
+            screen.getByRole('button', {name: /press \? on the page to see keybindings/i}),
+        ).toBeDefined();
     });
 });

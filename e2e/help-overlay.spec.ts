@@ -1,4 +1,4 @@
-import type {Page} from '@playwright/test';
+import type {BrowserContext, Page} from '@playwright/test';
 import {test, expect} from './fixtures';
 import {openFixturePage, expectToast, readClipboardText} from './helpers';
 
@@ -165,5 +165,48 @@ test.describe('help overlay (real browser)', () => {
         await page.keyboard.press('q');
 
         await expect(overlay(page)).toHaveCount(0);
+    });
+});
+
+/**
+ * The popup's keybinding hint is a button that sends SHOW_HELP to the page
+ * (see lib/popup-tabs/HelpHint). A popup opened as a Playwright page is its
+ * own "active tab", so the message is sent from the service worker instead —
+ * the same chrome.tabs.sendMessage the popup makes.
+ */
+test.describe('help overlay opened by message (real browser)', () => {
+    const showHelpByMessage = (context: BrowserContext) => {
+        const [worker] = context.serviceWorkers();
+        return worker.evaluate(async (url) => {
+            const [tab] = await chrome.tabs.query({url});
+            if (!tab?.id) throw new Error(`no tab at ${url}`);
+            await chrome.tabs.sendMessage(tab.id, {type: 'SHOW_HELP'});
+        }, PAGE_URL);
+    };
+
+    test('a page that never sees a keystroke still copies a rich link by clicks alone', async ({
+        context,
+        extensionId: _serviceWorkerStarted,
+    }) => {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+            origin: new URL(PAGE_URL).origin,
+        });
+        const page = await openFixturePage(context, PAGE_URL, PAGE_HTML);
+
+        // Retry: the content script registers its handler a beat after 'loaded'.
+        await expect(async () => {
+            await showHelpByMessage(context);
+            await expect(overlay(page)).toBeVisible({timeout: 500});
+        }).toPass({timeout: 5000});
+
+        // A second request while open does not stack a second overlay.
+        await showHelpByMessage(context);
+        await expect(overlay(page)).toHaveCount(1);
+
+        await page.getByText('Copy rich link').click();
+
+        await expect(overlay(page)).toHaveCount(0);
+        await expectToast(page, /Copier:/);
+        expect(await readClipboardText(page)).toContain(PAGE_URL);
     });
 });

@@ -3,6 +3,7 @@ import {TabRegistry} from '@exo/lib/popup-tabs/tab-registry';
 import {Storage} from '@exo/lib/storage';
 import {TabErrorBoundary} from '@exo/popup/TabErrorBoundary';
 import {TabEnablementSection} from '@exo/lib/popup-tabs/TabEnablementSection';
+import {HelpHint} from '@exo/lib/popup-tabs/HelpHint';
 // eslint-disable-next-line no-restricted-imports -- CSS must use relative imports
 import './TabBar.css';
 
@@ -48,9 +49,9 @@ export function TabBar() {
     if (visibleTabs.length === 0) {
         return (
             <div className="tab-empty-state">
-                No exo tools match this page.
+                No exo tools match this page. Keyboard shortcuts still work:
                 <br />
-                Keyboard shortcuts still work — press <kbd>?</kbd> on any page.
+                <HelpHint />
             </div>
         );
     }

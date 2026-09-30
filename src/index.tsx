@@ -2,6 +2,7 @@
 // behind in this page (see lib/lifecycle.ts).
 import {onDispose} from '@exo/lib/lifecycle';
 import {ShowToastAction, showToastPayload} from '@exo/lib/actions/show-toast.action';
+import {ShowHelpAction} from '@exo/lib/actions/show-help.action';
 import {Notifications} from '@exo/lib/toast-notification';
 import {syncToastMutes} from '@exo/lib/toast-mutes';
 import {keybindings} from '@exo/lib/keybindings';
@@ -24,6 +25,9 @@ import.meta.glob('./plugins/*/page.{ts,tsx}', {eager: true});
 
 // Shared: the ShowToast action any popup or service worker can send.
 ShowToastAction.handle(showToastPayload);
+// Shared: the popup asks the page to open the help overlay (its hint is a
+// button, for pages that never let a keystroke through).
+ShowHelpAction.handle(() => keybindings.showHelp());
 
 keybindings.registerAll([
     // Backspace stays free until a toast is on screen.

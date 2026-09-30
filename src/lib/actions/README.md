@@ -4,3 +4,4 @@ Framework and shared action definitions. Plugin-specific actions live in the plu
 
 - `base-action.tsx` — `Action` base class for typed Chrome message routing
 - `show-toast.action.tsx` — shared toast notification action (used by TabRegistry and other shared code)
+- `show-help.action.tsx` — asks a page to open the keybinding help overlay (sent by the popup's `HelpHint`)
