@@ -4,11 +4,10 @@
  *
  *   <div role="region" id="diff-<sha>">                              ← PRFile.region
  *     <div data-diff-header-wrapper style="--header-sticky-offset: 0px">
- *       <div class="DiffFileHeader-module__diff-file-header__…        ← PRFile.header
- *                   [DiffFileHeader-module__collapsed__…]">
+ *       <div class="diff-file-header__… [collapsed__…]">              ← PRFile.header
  *         <button><svg class="octicon-chevron-down|right"/></button>  ← fold toggle
  *         <h3><a href="#diff-<sha>"><code>‎path‎</code></a></h3>
- *         <button class="MarkAsViewedButton-module__…"
+ *         <button aria-label="Viewed|Not Viewed"
  *                 aria-pressed="true|false">                          ← viewed toggle
  *       </div>
  *     </div>
@@ -18,6 +17,10 @@
  * Marking a file viewed collapses it; the two states are otherwise
  * independent (a viewed file can be re-opened, an unviewed one closed).
  * Every GitHub selector the plugin knows lives in this module.
+ *
+ * Class names are CSS-module hashes and GitHub has shipped two spellings
+ * (`DiffFileHeader-module__collapsed__ZY5uc`, then `collapsed__6txiiR`), so
+ * a class is matched on its `<name>__` core, never on a module prefix.
  */
 
 /** One file diff of the pull request, identified by GitHub's own anchor id. */
@@ -31,11 +34,11 @@ export interface PRFile {
 }
 
 const REGION_SELECTOR = '[role="region"][id^="diff-"]';
-const HEADER_SELECTOR = '[class*="DiffFileHeader-module__diff-file-header"]';
+const HEADER_SELECTOR = '[class*="diff-file-header__"]';
 const HEADER_WRAPPER_SELECTOR = '[data-diff-header-wrapper]';
-const COLLAPSED_HEADER_CLASS = /DiffFileHeader-module__collapsed/;
-const VIEWED_BUTTON_SELECTOR = 'button[class*="MarkAsViewedButton"]';
-const VIEWED_BUTTON_CLASS = /MarkAsViewedButton-module__viewed/;
+const COLLAPSED_HEADER_CLASS = /(?:^|[\s_])collapsed__/;
+const VIEWED_BUTTON_SELECTOR = 'button[aria-label$="Viewed"]';
+const VIEWED_BUTTON_CLASS = /(?:^|[\s_])viewed__/;
 const FOLD_CHEVRON_SELECTOR = 'svg.octicon-chevron-right, svg.octicon-chevron-down';
 const BODY_SELECTOR = '[data-diff-anchor]';
 /** GitHub wraps paths in LEFT-TO-RIGHT MARK and friends; they are not part of the path. */

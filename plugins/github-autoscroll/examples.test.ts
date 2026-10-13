@@ -52,7 +52,7 @@ describe.skipIf(EXAMPLES.length === 0)('GitHub files model against real DOM snap
         it('models every file header once, with a full path and a unique anchor', () => {
             installDom();
             const headers = document.querySelectorAll(
-                '[class*="DiffFileHeader-module__diff-file-header__"]',
+                '[data-diff-header-wrapper] [class*="diff-file-header__"]',
             );
             const files = getFiles();
             expect(files.length).toBe(headers.length);
@@ -78,10 +78,10 @@ describe.skipIf(EXAMPLES.length === 0)('GitHub files model against real DOM snap
             installDom();
             const files = getFiles();
             const viewedButtons = document.querySelectorAll(
-                'button[class*="MarkAsViewedButton"][aria-pressed="true"]',
+                'button[aria-label="Viewed"][aria-pressed="true"]',
             ).length;
             const collapsedHeaders = document.querySelectorAll(
-                '[class*="DiffFileHeader-module__collapsed"]',
+                '[data-diff-header-wrapper] [class*="collapsed__"]',
             ).length;
             expect(files.filter(isViewed).length).toBe(viewedButtons);
             expect(files.filter(isCollapsed).length).toBe(collapsedHeaders);

@@ -22,8 +22,8 @@ function accessibleName(button: HTMLButtonElement): string {
 /**
  * The gear that opens the diff view settings. Found by its own name first
  * ("Open diff view settings"), then as the gear-iconed menu button inside the
- * files toolbar proper — never by the first PullRequestFilesToolbar-classed
- * element, which is an empty sticky-header sentinel that precedes it.
+ * files toolbar proper — never by the first toolbar-classed element, which
+ * is an empty sticky-header sentinel that precedes it.
  */
 export function diffSettingsButton(): HTMLButtonElement | null {
     const gears = Array.from(
@@ -31,9 +31,7 @@ export function diffSettingsButton(): HTMLButtonElement | null {
     ).filter((button) => button.querySelector('svg.octicon-gear') !== null);
     return (
         gears.find((button) => /diff view settings/i.test(accessibleName(button))) ??
-        gears.find((button) =>
-            button.closest('[class*="PullRequestFilesToolbar-module__toolbar"]'),
-        ) ??
+        gears.find((button) => button.closest('[class*="toolbar__"]')) ??
         gears[0] ??
         null
     );
