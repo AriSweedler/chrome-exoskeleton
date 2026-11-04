@@ -10,6 +10,8 @@ a **plugin**: a directory with a page module and/or a popup tab.
   guards, a Ctrl+V pass-through and a `?` help overlay.
 - **Rich links**: Cmd+Shift+C copies a well-titled link to the current page;
   plugins add site-specific formats.
+- **Save for Claude**: Cmd+Shift+D downloads the page as HTML and copies a
+  Claude Code prompt that mentions the file.
 - **Popup tabs**: a plugin can render a tab in the extension popup for the
   pages it knows.
 - **Toasts**, storage, clipboard and typed popup-to-page actions as libraries.
