@@ -15,10 +15,15 @@ import {coverHeight, pinToTop} from '@exo/plugins/github-autoscroll/scroll';
  * by GitHub's anchor id and re-resolved from the DOM on every use, so React
  * re-rendering the region cannot lose it.
  *
- * The ring is one overlay element on the page body, laid over the active
- * file's box. It lives outside GitHub's file wrappers on purpose: they use
- * content-visibility: auto, whose paint containment clips anything drawn
- * outside them, so a ring inside them could never glow outward.
+ * The ring is one overlay element laid over the active file's box. It lives
+ * outside GitHub's file wrappers on purpose: they use content-visibility:
+ * auto, whose paint containment clips anything drawn outside them, so a ring
+ * inside them could never glow outward. It sits just outside the outermost
+ * such wrapper rather than on the body: the page layout around the files is
+ * its own stacking context, so a ring on the body would paint over all of it,
+ * the sticky toolbar's review dialog included. In that context its z-index
+ * puts it over the file headers (5 inside each wrapper's own context) and
+ * under the toolbar (11).
  */
 
 const OVERLAY_ID = 'exo-github-active-file';
@@ -64,6 +69,30 @@ function isNotCover(element: Element): boolean {
     );
 }
 
+/** Whether `element` clips what its descendants paint outside it. */
+function isPaintContained(element: Element): boolean {
+    const style = window.getComputedStyle(element);
+    const visibility = style.getPropertyValue('content-visibility');
+    return (
+        visibility === 'auto' ||
+        visibility === 'hidden' ||
+        /\b(paint|strict|content)\b/.test(style.getPropertyValue('contain'))
+    );
+}
+
+/** The element the ring is appended to: the region's parent, or the parent of its outermost paint-contained ancestor. */
+function ringHost(region: HTMLElement): HTMLElement {
+    let host = region.parentElement ?? document.body;
+    for (
+        let node: HTMLElement | null = region;
+        node && node !== document.body;
+        node = node.parentElement
+    ) {
+        if (isPaintContained(node)) host = node.parentElement ?? document.body;
+    }
+    return host;
+}
+
 function paint(): void {
     const file = getActiveFile();
     if (!file) {
@@ -82,9 +111,10 @@ function paint(): void {
             `border-radius: 6px; border: 1px solid ${ACTIVE_FILE_BORDER}; ` +
             `box-shadow: 0 0 14px 3px ${ACTIVE_FILE_GLOW}, inset 0 0 10px ${ACTIVE_FILE_GLOW}; ` +
             'transition: top 120ms ease-out, height 120ms ease-out;';
-        document.body.appendChild(overlay);
         window.addEventListener('resize', place);
     }
+    const host = ringHost(file.region);
+    if (overlay.parentElement !== host) host.appendChild(overlay);
     // Whatever moves the file moves the ring: its own height (a diff rendering
     // lazily, a fold) and the document's (a neighbor collapsing, a panel).
     resizeObserver?.disconnect();
@@ -96,13 +126,20 @@ function paint(): void {
     place();
 }
 
-/** Lay the ring over the active file's box, in document coordinates (it scrolls with the page). */
+/** Lay the ring over the active file's box, in its offset parent's coordinates (it scrolls with the page). */
 function place(): void {
     const file = getActiveFile();
     if (!file || !overlay) return;
     const rect = file.region.getBoundingClientRect();
-    overlay.style.top = `${rect.top + window.scrollY}px`;
-    overlay.style.left = `${rect.left + window.scrollX}px`;
+    const parent = overlay.offsetParent;
+    if (parent instanceof HTMLElement && parent !== document.body) {
+        const origin = parent.getBoundingClientRect();
+        overlay.style.top = `${rect.top - origin.top - parent.clientTop + parent.scrollTop}px`;
+        overlay.style.left = `${rect.left - origin.left - parent.clientLeft + parent.scrollLeft}px`;
+    } else {
+        overlay.style.top = `${rect.top + window.scrollY}px`;
+        overlay.style.left = `${rect.left + window.scrollX}px`;
+    }
     overlay.style.width = `${rect.width}px`;
     overlay.style.height = `${rect.height}px`;
 }

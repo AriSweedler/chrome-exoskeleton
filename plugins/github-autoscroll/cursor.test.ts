@@ -39,7 +39,7 @@ describe('the active file', () => {
         document.body.innerHTML = '';
     });
 
-    it('is painted as one overlay on the body, laid over the file, glowing in and out', () => {
+    it('is painted as one overlay beside the file, laid over it, glowing in and out', () => {
         expect(ring()).toBeNull();
         const [a] = getFiles();
         a.region.getBoundingClientRect = () => rect({top: 100, left: 20, width: 600, height: 300});
@@ -47,7 +47,7 @@ describe('the active file', () => {
         expect(getActiveAnchor()).toBe(anchorFor('a.ts'));
         expect(getActiveFile()?.path).toBe('a.ts');
         const el = ring()!;
-        expect(el.parentElement).toBe(document.body);
+        expect(el.parentElement).toBe(a.region.parentElement);
         expect(el.style.position).toBe('absolute');
         expect(el.style.pointerEvents).toBe('none');
         expect(el.style.borderWidth).toBe('1px');
@@ -61,6 +61,52 @@ describe('the active file', () => {
             width: el.style.width,
             height: el.style.height,
         }).toEqual({top: '100px', left: '20px', width: '600px', height: '300px'});
+    });
+
+    it('sits outside the outermost paint-contained wrapper, inside the page layout, not on the body', () => {
+        const [a] = getFiles();
+        const lazy = document.createElement('div');
+        const outer = document.createElement('div');
+        const layout = document.createElement('div');
+        a.region.replaceWith(layout);
+        layout.appendChild(outer);
+        outer.appendChild(lazy);
+        lazy.appendChild(a.region);
+        const contained = new Map<Element, [string, string]>([
+            [lazy, ['content-visibility', 'auto']],
+            [outer, ['contain', 'layout paint']],
+        ]);
+        const computed = window.getComputedStyle.bind(window);
+        vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+            const hit = contained.get(element);
+            if (!hit) return computed(element, pseudo);
+            return {
+                getPropertyValue: (name: string) => (name === hit[0] ? hit[1] : ''),
+            } as ReturnType<typeof window.getComputedStyle>;
+        });
+        setActiveFile(getFiles()[0]);
+        expect(ring()?.parentElement).toBe(layout);
+        expect(ring()?.style.zIndex).toBe('3');
+    });
+
+    it('is placed in its offset parent coordinates when one holds it', () => {
+        const [a] = getFiles();
+        a.region.getBoundingClientRect = () => rect({top: 500, left: 120, width: 600, height: 300});
+        setActiveFile(a);
+        const host = a.region.parentElement!;
+        host.getBoundingClientRect = () => rect({top: 200, left: 100});
+        Object.defineProperties(host, {
+            clientTop: {value: 1},
+            clientLeft: {value: 2},
+            scrollTop: {value: 40},
+            scrollLeft: {value: 0},
+        });
+        Object.defineProperty(ring()!, 'offsetParent', {value: host});
+        window.dispatchEvent(new Event('resize'));
+        expect({top: ring()?.style.top, left: ring()?.style.left}).toEqual({
+            top: '339px',
+            left: '18px',
+        });
     });
 
     it('moves the one overlay rather than adding another, and removes it when cleared', () => {
