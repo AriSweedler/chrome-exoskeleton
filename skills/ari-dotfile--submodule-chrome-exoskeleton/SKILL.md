@@ -1,23 +1,34 @@
 ---
 name: ari-dotfile--submodule-chrome-exoskeleton
-description: Work on the Chrome Exoskeleton as a dotfiles citizen — the framework repo at ~/.config/chrome-exoskeleton (public) holds the engine and public plugins, private plugins live in the local tier at ~/.local/share/chrome-exoskeleton/plugins, and `exo` drives link, check, build. Where things go, how each side is committed, and what to do when a check refuses. Commits, pushes and pointer bumps follow ari-dotfile--submodule.
+description: Work on the Chrome Exoskeleton as a dotfiles citizen — the framework repo at ~/.config/chrome-exoskeleton (public; a dev repo: a plain clone the shared dotfiles repo ignores and the shared Nix flake reads as an input) holds the engine and public plugins, private plugins live in the local tier at ~/.local/share/chrome-exoskeleton/plugins, and `exo` drives link, check, build. Where things go, how each side is committed, and what to do when a check refuses. Commits, pushes and the flake.lock bump follow ari-dotfile--submodule.
 ---
 
 # Chrome Exoskeleton in the dotfiles
 
 The Chrome extension is a framework plus plugins, split across the two dotfiles
 tiers of `/ari-dotfiles` (df = shared, `~/.config`; ldf = local, `~/.local`).
-The framework directory is a dotfiles submodule: `/ari-dotfile--submodule` has
-the layout it follows, how to be on `main`, how commits and the user's push
-flow, and the generic failures. This skill has what is exo-specific.
+The framework directory is a *dev repo*, not a git submodule (this skill's
+name predates that). `/ari-dotfile--submodule` has the layout a dev repo
+follows, how commits, the user's push and the lock bump flow, and the generic
+failures. This skill has what is exo-specific.
 
 ## Layout
 
+The framework is a plain clone on `main` at
+`~/dotfiles/.config/chrome-exoskeleton`, linked whole to
+`~/.config/chrome-exoskeleton`. The shared repo ignores it, and
+`~/dotfiles/.config/dotfiles/dev-repos` lists it. There is no `.gitmodules`,
+no gitlink and no `git df submodule …`. The shared flake takes it as the
+`chrome-exoskeleton` input (github, `flake = false`), locked in
+`~/dotfiles/.config/dotfiles/nix/flake.lock`. Today only
+`nix/claude-skills.nix` reads the input, for the names of the skills the repo
+carries. `exo` and the build run from the checkout, never from the input.
+
 | Piece | Path | Tier |
 |---|---|---|
-| Framework (= the public repo) and its public plugins under `plugins/` | `~/.config/chrome-exoskeleton/`, upstream `github.com/AriSweedler/chrome-exoskeleton` | df |
-| Skills that travel with the framework (this one) | `~/.config/chrome-exoskeleton/skills/<name>/`, linked into `~/.claude/skills` by `/ari-dotfiles-skill-registry` | df |
-| `exo`, the driver | `~/.config/bin/exo -> ../chrome-exoskeleton/bin/exo` | df |
+| Framework (= the public repo) and its public plugins under `plugins/` | `~/.config/chrome-exoskeleton/`, upstream `github.com/AriSweedler/chrome-exoskeleton` | the framework repo (a dev repo; df ignores it) |
+| Skills that travel with the framework (this one) | `~/.config/chrome-exoskeleton/skills/<name>/`, linked into `~/.claude/skills` by the shared flake (`nix/claude-skills.nix`); a new one gets its link at the `dotfiles switch` after its commit | the framework repo |
+| `exo`, the driver | `~/.config/bin/exo`, a df link that resolves to the checkout's `bin/exo` | df |
 | Private plugins | `~/.local/share/chrome-exoskeleton/plugins/<name>/` | ldf |
 | `env.zsh` (node for hooks), `denylist.txt` (what the public repo must never contain), `plugins/{tsconfig.json,eslint.config.js,package.json}` (editor and Playwright config) | `~/.local/share/chrome-exoskeleton/` | ldf |
 
@@ -49,8 +60,8 @@ through a mount and never `git add` one, in either tier.
 - **`exo` owns the toolchain.** Never bare `npm`/`npx` in the framework
   (`exo deps <npm args>` pins the registry so the public lockfile never records
   the work mirror); new plugins come from `exo new`, never a hand-made
-  directory; run `exo link` after `git ldf pull`, after `/ari-dotfiles` refreshes
-  the framework checkout, or after any manual change under a plugin root. If
+  directory; run `exo link` after `git ldf pull`, after the framework checkout
+  moves (Sync a machine), or after any manual change under a plugin root. If
   `exo` is not on `PATH`, run `~/.config/chrome-exoskeleton/bin/exo`; never
   substitute raw `npm run`.
 
@@ -116,10 +127,15 @@ with the tier's workflow below.
    is the personal address.
 2. Commit per **Rules**; `exo build --personal` before shipping a framework change.
 3. `/ari-dotfile--submodule` § Pushing and § Verify: the user's `dotfiles push`
-   publishes the repo and bumps the pointer.
+   pushes the repo, then bumps the lock: `nix flake update chrome-exoskeleton`
+   and a shared-tier commit of `flake.lock` alone,
+   `chrome-exoskeleton: bump to <sha> (<subject>)`. Before the push,
+   `dotfiles switch` already builds from the checkout's HEAD: it overrides the
+   input with it.
 
 Skills in `~/.config/chrome-exoskeleton/skills/<name>/` follow these same steps;
-they are files of this repo, not of the shared tier.
+they are files of this repo, not of the shared tier (`git df add` cannot see
+them: the shared repo ignores the checkout).
 
 ### Load the build
 
@@ -132,23 +148,27 @@ While iterating, `exo dev` does the build on every save.
 
 ### Sync a machine
 
-After `/ari-dotfiles` has refreshed the framework checkout on a machine:
+`dotfiles pull` moves the lock, never the checkout. Bring the checkout up
+first (`/ari-dotfiles` § After `dotfiles pull` on any machine), then refresh:
 
 ```zsh
+git -C ~/.config/chrome-exoskeleton pull --ff-only origin main
 exo link && exo build
 ```
 
 If `package-lock.json` changed, `exo deps ci` first. Fresh machine:
-`dotfiles apply chrome_exoskeleton` runs `exo deps ci` (wires the hooks) and
-`exo build`; `dotfiles healthcheck` reports its verdicts. Then Load unpacked. On a
-personal machine node must be on `PATH` (no `env.zsh`) and there is no
-denylist.
+`dotfiles apply dotfiles_repo` clones a missing checkout, then
+`dotfiles apply chrome_exoskeleton` sets the commit identity, runs
+`exo deps ci` (wires the hooks) and `exo build`; `dotfiles healthcheck` reports
+the step's verdicts (identity, deps, `dist/`, Chrome loading it). Then Load
+unpacked. On a personal machine node must be on `PATH` (no `env.zsh`) and
+there is no denylist.
 
 ## When it fails
 
 Never `--no-verify`, in any repo. Never edit `denylist.txt` to make a check
-pass. Detached HEAD, pathspec-in-submodule, `dotfiles push` log lines, pointer
-refusals: `/ari-dotfile--submodule` § When it fails.
+pass. A checkout off `main`, `dotfiles push` log lines, a lock bump that
+failed or was refused: `/ari-dotfile--submodule` § When it fails.
 
 | symptom | cause | do |
 |---|---|---|
@@ -157,7 +177,7 @@ refusals: `/ari-dotfile--submodule` § When it fails.
 | `exo check`: lint, prettier, tsc or vitest red | code | fix (`exo format` for format-only); commit again |
 | `git ldf push` prints `[EXO-PREPUSH] failed` | the suite failed; the commit stands, nothing pushed | fix, commit, push again; `exo check --e2e` reproduces it. `EXO_PUSH_E2E=0` only when the user asks, never for a red suite |
 | `git ldf push` exits 1 with no `[EXO-PREPUSH]` line | network or ssh to the local tier's remote | the commit is safe; retry later |
-| `git ldf push`: `chrome-exoskeleton framework missing` | the framework is not checked out on this machine | `/ari-dotfiles` § Submodules, then `exo deps ci` |
+| `git ldf push`: `chrome-exoskeleton framework missing` | the framework is not checked out on this machine | `dotfiles apply dotfiles_repo` (clones it), then `dotfiles apply chrome_exoskeleton` |
 | `exo`: `node not found` | personal machine without node, or `env.zsh` missing | stop and report; do not install node |
 | `exo new`: `plugin name present in two roots` | the name exists in the other tier | `rm -r` the half-scaffold, `exo link`, pick another name or the other tier |
 
