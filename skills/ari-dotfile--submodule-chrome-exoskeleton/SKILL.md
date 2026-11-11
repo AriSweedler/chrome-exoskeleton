@@ -146,6 +146,14 @@ load per profile (Load unpacked `~/.config/chrome-exoskeleton/dist`;
 `dist-personal/` for a personal-only build) and for a build Chrome rejected.
 While iterating, `exo dev` does the build on every save.
 
+**One copy per profile, loaded by the link's path.** Chrome derives an unpacked
+extension's ID from the path string it is given, so `~/.config/chrome-exoskeleton/dist`
+and the path it resolves to (`~/dotfiles/.config/chrome-exoskeleton/dist`, which a
+file picker can hand back) load as two cards, and every keybinding fires twice.
+`dist/` and `dist-personal/` both on in one profile do the same. Two cards: the
+user removes every one but the `~/.config/chrome-exoskeleton/dist` one
+(`dotfiles healthcheck` names them, below).
+
 ### Sync a machine
 
 `dotfiles pull` moves the lock, never the checkout. Bring the checkout up
@@ -178,6 +186,7 @@ failed or was refused: `/ari-dotfile--submodule` § When it fails.
 | `git ldf push` prints `[EXO-PREPUSH] failed` | the suite failed; the commit stands, nothing pushed | fix, commit, push again; `exo check --e2e` reproduces it. `EXO_PUSH_E2E=0` only when the user asks, never for a red suite |
 | `git ldf push` exits 1 with no `[EXO-PREPUSH]` line | network or ssh to the local tier's remote | the commit is safe; retry later |
 | `git ldf push`: `chrome-exoskeleton framework missing` | the framework is not checked out on this machine | `dotfiles apply dotfiles_repo` (clones it), then `dotfiles apply chrome_exoskeleton` |
+| `dotfiles healthcheck`: `chrome_exoskeleton` fails `duplicate_load` (two Chrome Exoskeleton cards, keys fire twice) | one build loaded twice in a profile: by the link's path and its resolved one, or `dist/` and `dist-personal/` | the user removes each card the detail's `remove=` names in `chrome://extensions`; never drive their Chrome |
 | `exo`: `node not found` | personal machine without node, or `env.zsh` missing | stop and report; do not install node |
 | `exo new`: `plugin name present in two roots` | the name exists in the other tier | `rm -r` the half-scaffold, `exo link`, pick another name or the other tier |
 
