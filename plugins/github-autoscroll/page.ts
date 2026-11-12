@@ -17,6 +17,13 @@ import {
 import {getFiles, isViewed, setViewed} from '@exo/plugins/github-autoscroll/files';
 import {toggleDiffLayout} from '@exo/plugins/github-autoscroll/layout';
 import {
+    type ViewPick,
+    isPanelOpen,
+    panelToggle,
+    showPanelView,
+    togglePanel,
+} from '@exo/plugins/github-autoscroll/panel';
+import {
     scrollPageDown,
     scrollStep,
     scrollToPageBottom,
@@ -32,10 +39,11 @@ import {
 
 /** The popup tab's id; its enablement toggle gates the auto-run. */
 const TAB_ID = 'github-autoscroll';
-/** Help-overlay groups: the site, a pull request's tabs, and the review cursor. */
+/** Help-overlay groups: the site, a pull request's tabs, the review cursor, the side panel. */
 const SITE_CONTEXT = 'GitHub';
 const PR_CONTEXT = 'GitHub PR';
 const REVIEW_CONTEXT = 'GitHub PR review';
+const PANEL_CONTEXT = 'GitHub PR side panel';
 const NO_FILES_MESSAGE = "No files found. Make sure you're on a GitHub PR changes page.";
 
 const onPRPage = (): boolean => isGitHubPRPage(window.location.href);
@@ -220,6 +228,64 @@ async function switchDiffLayout(): Promise<void> {
     }
 }
 
+// --- the side panel -------------------------------------------------------
+
+/** How many menu positions get a numbered binding; GitHub's menu is shorter. */
+const PANEL_VIEW_POSITIONS = 9;
+
+const hasPanel = (): boolean => onPRPage() && panelToggle() !== null;
+const panelShowing = (): boolean => onPRPage() && isPanelOpen();
+
+async function toggleSidePanel(): Promise<void> {
+    const outcome = await togglePanel();
+    const tag = `github.panel.${outcome.kind}`;
+    switch (outcome.kind) {
+        case 'opened':
+            Notifications.show({
+                tag,
+                message: outcome.view ? `Panel: ${outcome.view}` : 'Panel opened',
+                replace: true,
+            });
+            return;
+        case 'closed':
+            Notifications.show({tag, message: 'Panel closed', replace: true});
+            return;
+        case 'no-panel':
+            Notifications.show({
+                tag,
+                message: 'No side panel on this page',
+                type: NotificationType.Error,
+                replace: true,
+            });
+    }
+}
+
+async function showSidePanelView(pick: ViewPick): Promise<void> {
+    const outcome = await showPanelView(pick);
+    const tag = `github.panel.${outcome.kind}`;
+    const error = (message: string) =>
+        Notifications.show({tag, message, type: NotificationType.Error, replace: true});
+    switch (outcome.kind) {
+        case 'shown':
+        case 'already':
+            Notifications.show({tag, message: `Panel: ${outcome.view}`, replace: true});
+            return;
+        case 'no-such-view': {
+            const wanted =
+                'position' in outcome.pick
+                    ? `view ${outcome.pick.position}`
+                    : `"${outcome.pick.named}"`;
+            error(`No ${wanted} in the panel menu (${outcome.views.join(', ')})`);
+            return;
+        }
+        case 'no-panel':
+            error('The side panel is closed');
+            return;
+        case 'no-menu':
+            error("The panel's view menu did not open");
+    }
+}
+
 // --- folds ----------------------------------------------------------------
 
 function fold(action: FoldAction): void {
@@ -323,6 +389,37 @@ function registerKeybindings(): void {
             context: PR_CONTEXT,
             when: onPRPage,
         },
+        // A toggle, though GitHub's own close-on-escape still works: one key opens and closes.
+        {
+            key: ']',
+            description: 'Open / close the side panel',
+            handler: () => void toggleSidePanel(),
+            context: PANEL_CONTEXT,
+            when: hasPanel,
+        },
+        // While the panel shows: pick its view, by name for the common ones and
+        // by menu position for every one.
+        {
+            sequence: ['g', 's'],
+            description: 'Side panel: Merge status',
+            handler: () => void showSidePanelView({named: 'status'}),
+            context: PANEL_CONTEXT,
+            when: panelShowing,
+        },
+        {
+            sequence: ['g', 'd'],
+            description: 'Side panel: Description',
+            handler: () => void showSidePanelView({named: 'description'}),
+            context: PANEL_CONTEXT,
+            when: panelShowing,
+        },
+        ...Array.from({length: PANEL_VIEW_POSITIONS}, (_, i) => ({
+            sequence: ['g', String(i + 1)],
+            description: `Side panel: view ${i + 1} of its menu`,
+            handler: () => void showSidePanelView({position: i + 1}),
+            context: PANEL_CONTEXT,
+            when: panelShowing,
+        })),
         {
             key: 'a',
             description: 'Toggle PR autoscroll',

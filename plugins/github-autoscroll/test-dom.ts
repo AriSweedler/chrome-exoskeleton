@@ -266,3 +266,101 @@ export const GITHUB_LAYOUT_MENU_SCRIPT_BEHAVIOR = `<script>
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
 })();
 </script>`;
+
+// --- the docked side panel (Overview page) --------------------------------
+
+/** Views the fixture's panel menu offers, in menu order. GitHub's real list is read at runtime. */
+export const PANEL_VIEWS = ['Merge status', 'Description', 'Activity'] as const;
+
+/**
+ * The Overview page's mini header and docked side panel, closed. A Primer
+ * listbox that is always in the document (GitHub's activity-filter
+ * suggestions) sits beside it, so menu lookup must not mistake it for the
+ * view menu.
+ */
+export function renderPanelPage(): string {
+    return `
+<div data-testid="diff-comparison-viewer-sticky-header-bar">
+  <button type="button" data-docked-panel-toggle aria-expanded="false" aria-labelledby="panel-tip"></button>
+  <span id="panel-tip">Open panel</span>
+</div>
+<div class="SidebarWrapper SidePanel__x HiddenSidePanel__y" data-is-hidden="false">
+  <div id="docked-side-panel-content"></div>
+</div>
+<ul role="listbox" aria-label="Suggestions"></ul>`;
+}
+
+/**
+ * Emulate GitHub's panel: the toggle renders the panel a beat later on the
+ * last view shown; the view button opens a menu (appended, labelled by the
+ * button); picking an item re-renders the panel with a fresh button id;
+ * Escape closes the menu, and closes the panel when no menu is open.
+ */
+export function installPanelBehavior(
+    root: Document,
+    {
+        views = [...PANEL_VIEWS],
+        initialView,
+        renderDelayMs = 30,
+    }: {views?: string[]; initialView?: string; renderDelayMs?: number} = {},
+): () => void {
+    let view = initialView ?? views[0];
+    let renders = 0;
+    const toggle = () => root.querySelector<HTMLButtonElement>('[data-docked-panel-toggle]')!;
+    const content = () => root.getElementById('docked-side-panel-content')!;
+    const menu = () => root.getElementById('exo-test-panel-menu');
+    const render = () => {
+        renders++;
+        content().innerHTML = `<h3><button type="button" id="view-btn-${renders}" class="PanelNavigationDropdown__abc" aria-label="${view}" aria-haspopup="true" aria-expanded="false">${view}</button></h3>`;
+    };
+    const setOpen = (open: boolean) => {
+        toggle().setAttribute('aria-expanded', String(open));
+        root.getElementById('panel-tip')!.textContent = open ? 'Close panel' : 'Open panel';
+        if (open) setTimeout(render, renderDelayMs);
+        else content().innerHTML = '';
+    };
+    const onClick = (event: Event): void => {
+        const target = event.target as Element | null;
+        if (target?.closest('[data-docked-panel-toggle]')) {
+            setOpen(toggle().getAttribute('aria-expanded') !== 'true');
+            return;
+        }
+        const viewButton = target?.closest<HTMLButtonElement>(
+            '[class*="PanelNavigationDropdown__"]',
+        );
+        if (viewButton) {
+            if (menu()) menu()!.remove();
+            else {
+                const items = views
+                    .map(
+                        (v) =>
+                            `<li role="menuitemradio" aria-checked="${v === view}"><span>${v}</span></li>`,
+                    )
+                    .join('');
+                root.body.insertAdjacentHTML(
+                    'beforeend',
+                    `<ul role="menu" id="exo-test-panel-menu" aria-labelledby="${viewButton.id}">${items}</ul>`,
+                );
+            }
+            return;
+        }
+        const item = target?.closest('#exo-test-panel-menu [role="menuitemradio"]');
+        if (item) {
+            view = item.textContent?.trim() ?? view;
+            menu()?.remove();
+            render();
+        }
+    };
+    const onKey = (event: Event): void => {
+        if ((event as KeyboardEvent).key !== 'Escape') return;
+        if (menu()) menu()!.remove();
+        else setOpen(false);
+    };
+    root.addEventListener('click', onClick);
+    root.addEventListener('keydown', onKey);
+    return () => {
+        root.removeEventListener('click', onClick);
+        root.removeEventListener('keydown', onKey);
+        menu()?.remove();
+    };
+}

@@ -28,7 +28,8 @@ import {diffSettingsButton, toggleDiffLayout} from '@exo/plugins/github-autoscro
  * on uncommitted files.
  */
 
-const EXAMPLES = listExamples();
+/** Overview-page snapshots (`ghpr-overview-*`) hold no files; panel.examples.test.ts reads them. */
+const EXAMPLES = listExamples().filter((name) => !name.startsWith('ghpr-overview-'));
 
 if (EXAMPLES.length === 0) {
     console.warn(

@@ -16,6 +16,9 @@ and `v` act on it.
 | `c` / `f`  | PR pages          | jump to the Conversation / Files changed tab                                                                                                                                            |
 | `d`        | PR pages          | mark the auto-hidden files (generated, deleted) Viewed and scroll down a viewport; hold it to sweep a huge PR                                                                           |
 | `D`        | PR pages          | undo `d`: show those files again (files viewed before the page loaded are out of reach: GitHub drops a viewed file's body, which is what identifies it)                                 |
+| `]`        | PR pages with the side panel | open / close the docked side panel (GitHub's own Escape also closes it) |
+| `gs` / `gd` | side panel open  | show the Merge status / Description view (matched by a word of the view's name) |
+| `g1`…`g9`  | side panel open  | show the panel menu's 1st…9th view, in the menu's own order |
 | `gg` / `G` | every GitHub page | scroll to the top / bottom (this swallows GitHub's own `g` prefix; Ctrl+V passes a literal `g` through)                                                                                 |
 
 Autoscroll starts on its own when a Files changed page has rendered its
@@ -59,10 +62,14 @@ GitHub's anchor id, so a region GitHub re-renders stays pinned.
 | `autoscroll.ts`  | detecting viewed flips by state diff, moving the cursor                   |
 | `auto-hidden.ts` | the `d` / `D` sweep and its memory                                        |
 | `scroll.ts`      | page jumps and the holding pin                                            |
+| `panel.ts`       | the docked side panel: open / closed, current view, picking a view        |
 | `url.ts`         | PR URL parsing and tab navigation                                         |
 | `page.ts`        | keys, auto-run, SPA navigation, popup messages                            |
 | `test-dom.ts`    | a GitHub-shaped fixture with click emulation, for unit and e2e tests      |
 
 Real-DOM tests read saved snapshots from `examples/*.html` (gitignored,
 machine-local): open a PR's Files changed view, copy the DOM, and save it as
-`examples/ghpr-<what-it-shows>.html`.
+`examples/ghpr-<what-it-shows>.html`. Overview-page snapshots of the side
+panel are `examples/ghpr-overview-panel-<closed|view-slug>.html` (e.g.
+`ghpr-overview-panel-merge-status.html`); the panel suite reads its
+expectation from the name.
