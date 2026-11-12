@@ -17,7 +17,7 @@ and `v` act on it.
 | `d`        | PR pages          | mark the auto-hidden files (generated, deleted) Viewed and scroll down a viewport; hold it to sweep a huge PR                                                                           |
 | `D`        | PR pages          | undo `d`: show those files again (files viewed before the page loaded are out of reach: GitHub drops a viewed file's body, which is what identifies it)                                 |
 | `]`        | PR pages with the side panel | open / close the docked side panel (GitHub's own Escape also closes it) |
-| `gs` / `gd` | side panel open  | show the Merge status / Description view (matched by a word of the view's name) |
+| `gs` / `gd` / `gc` | side panel open | show the Merge status / Description / Comments view (matched by a word of the view's name) |
 | `g1`…`g9`  | side panel open  | show the panel menu's 1st…9th view, in the menu's own order |
 | `gg` / `G` | every GitHub page | scroll to the top / bottom (this swallows GitHub's own `g` prefix; Ctrl+V passes a literal `g` through)                                                                                 |
 
