@@ -475,3 +475,45 @@ test.describe('the review cursor (Files changed)', () => {
         await expect(page.locator('#exo-github-active-file')).toHaveCount(0);
     });
 });
+
+test.describe('help groups in the overlay (side panel views)', () => {
+    /** An Overview page whose docked panel reads open: the panel's view keys are live. */
+    const OVERVIEW_HTML = `<!doctype html>
+<html><head><title>Overview</title></head><body>
+<div data-testid="diff-comparison-viewer-sticky-header-bar">
+  <button type="button" data-docked-panel-toggle aria-expanded="true">panel</button>
+</div>
+<div id="docked-side-panel-content"></div>
+</body></html>`;
+
+    const groupRow = (page: Page) =>
+        page.locator('.exo-help-group', {hasText: 'Side panel: view N of its menu'});
+
+    test('the numbered view keys are one row that expands into clickable rows', async ({
+        context,
+    }) => {
+        const page = await openFixturePage(context, PR_URL, OVERVIEW_HTML);
+        await waitForKeybindings(page);
+        await page.keyboard.press('Shift+Slash');
+
+        // Collapsed: one row for the family, none of its members.
+        await expect(groupRow(page)).toBeVisible();
+        await expect(groupRow(page).locator('kbd')).toContainText('…');
+        const member = page.locator('.exo-help-row', {hasText: 'Side panel: view 3 of its menu'});
+        await expect(member).toBeHidden();
+
+        // Real hit-testing: clicking the row expands it, the overlay stays.
+        await groupRow(page).click();
+        await expect(member).toBeVisible();
+        await expect(
+            page.locator('.exo-help-row', {hasText: /Side panel: view \d of its menu/}),
+        ).toHaveCount(9);
+        await expect(page.getByText('Keyboard Shortcuts')).toBeVisible();
+
+        // A member row still invokes its binding: the overlay closes and the
+        // handler reports on this panel (which has no view menu).
+        await member.click();
+        await expect(page.getByText('Keyboard Shortcuts')).not.toBeVisible();
+        await expectToast(page, /side panel is closed/);
+    });
+});

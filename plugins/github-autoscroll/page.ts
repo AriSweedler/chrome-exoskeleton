@@ -423,6 +423,7 @@ function registerKeybindings(): void {
         ...Array.from({length: PANEL_VIEW_POSITIONS}, (_, i) => ({
             sequence: ['g', String(i + 1)],
             description: `Side panel: view ${i + 1} of its menu`,
+            helpGroup: 'Side panel: view N of its menu',
             handler: () => void showSidePanelView({position: i + 1}),
             context: PANEL_CONTEXT,
             when: panelShowing,

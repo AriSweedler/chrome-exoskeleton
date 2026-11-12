@@ -131,6 +131,11 @@ export interface Keybinding {
         meta?: boolean;
     };
     context?: string; // Optional grouping context (e.g., "GitHub", "Docs")
+    // Bindings of one context sharing a helpGroup show in the help overlay
+    // as a single row named by it, where the first member sits; clicking
+    // that row expands it into the members' own rows (and collapses again).
+    // For families like "view 1..9" that would otherwise flood the overlay.
+    helpGroup?: string;
     // Only intercept the keystroke while this returns true; otherwise it
     // falls through to the page untouched. For bindings that dismiss things:
     // the key stays free until there is something to dismiss.
@@ -694,10 +699,9 @@ export class KeybindingRegistry {
       `;
             group.appendChild(contextHeader);
 
-            // Add keybindings for this context
-            keybindings.forEach((kb) => {
+            const makeRow = (className: string, description: string, keys: string) => {
                 const row = document.createElement('div');
-                row.className = 'exo-help-row';
+                row.className = className;
                 row.style.cssText = `
           display: flex;
           justify-content: space-between;
@@ -710,24 +714,9 @@ export class KeybindingRegistry {
           break-inside: avoid;
           transition: background 0.1s ease;
         `;
-                rowBindings.set(row, kb);
-
-                // The same predicate the click handler uses decides the
-                // affordance at hover time (guards are dynamic): what
-                // highlights is exactly what clicks. Activation itself is
-                // delegated to the overlay's click handler so clicks on the
-                // row's children count too.
-                row.addEventListener('mouseenter', () => {
-                    const active = this.isActive(kb);
-                    row.style.cursor = active ? 'pointer' : 'default';
-                    row.style.background = active ? colors.rowHover : 'transparent';
-                });
-                row.addEventListener('mouseleave', () => {
-                    row.style.background = 'transparent';
-                });
 
                 const desc = document.createElement('span');
-                desc.textContent = kb.description;
+                desc.textContent = description;
                 desc.style.cssText = `
           flex: 1;
           color: ${colors.text};
@@ -735,7 +724,7 @@ export class KeybindingRegistry {
         `;
 
                 const keyDisplay = document.createElement('kbd');
-                keyDisplay.textContent = this.formatKeybinding(kb);
+                keyDisplay.textContent = keys;
                 keyDisplay.style.cssText = `
           background: ${colors.kbdBg};
           border: 1px solid ${colors.kbdBorder};
@@ -750,7 +739,62 @@ export class KeybindingRegistry {
 
                 row.appendChild(desc);
                 row.appendChild(keyDisplay);
-                group.appendChild(row);
+                row.addEventListener('mouseleave', () => {
+                    row.style.background = 'transparent';
+                });
+                return row;
+            };
+
+            // A help group's rows: its collapsed header and the hidden list
+            // of member rows right below it, created at the first member.
+            const helpGroups = new Map<string, {header: HTMLElement; members: HTMLElement}>();
+            const membersOf = (name: string) => keybindings.filter((kb) => kb.helpGroup === name);
+
+            // Add keybindings for this context
+            keybindings.forEach((kb) => {
+                const row = makeRow('exo-help-row', kb.description, this.formatKeybinding(kb));
+                rowBindings.set(row, kb);
+
+                // The same predicate the click handler uses decides the
+                // affordance at hover time (guards are dynamic): what
+                // highlights is exactly what clicks. Activation itself is
+                // delegated to the overlay's click handler so clicks on the
+                // row's children count too.
+                row.addEventListener('mouseenter', () => {
+                    const active = this.isActive(kb);
+                    row.style.cursor = active ? 'pointer' : 'default';
+                    row.style.background = active ? colors.rowHover : 'transparent';
+                });
+
+                const name = kb.helpGroup;
+                if (!name) {
+                    group.appendChild(row);
+                    return;
+                }
+                let helpGroup = helpGroups.get(name);
+                if (!helpGroup) {
+                    const all = membersOf(name);
+                    const keys = all.map((member) => this.formatKeybinding(member));
+                    const header = makeRow(
+                        'exo-help-group',
+                        `▸ ${name}`,
+                        keys.length > 1 ? `${keys[0]} … ${keys[keys.length - 1]}` : keys[0],
+                    );
+                    header.setAttribute('aria-expanded', 'false');
+                    // Expanding always works, whatever the members' guards.
+                    header.addEventListener('mouseenter', () => {
+                        header.style.cursor = 'pointer';
+                        header.style.background = colors.rowHover;
+                    });
+                    const members = document.createElement('div');
+                    members.className = 'exo-help-group-members';
+                    members.style.cssText = 'display: none; padding-left: 16px;';
+                    group.appendChild(header);
+                    group.appendChild(members);
+                    helpGroup = {header, members};
+                    helpGroups.set(name, helpGroup);
+                }
+                helpGroup.members.appendChild(row);
             });
 
             groups.appendChild(group);
@@ -785,6 +829,21 @@ export class KeybindingRegistry {
         //   the overlay out from under a slightly-missed row click.
         this.helpOverlay.addEventListener('click', (event) => {
             const target = event.target instanceof Element ? event.target : null;
+            const groupHeader = target?.closest('.exo-help-group');
+            if (groupHeader instanceof HTMLElement) {
+                const members = groupHeader.nextElementSibling;
+                if (members instanceof HTMLElement) {
+                    const expand = groupHeader.getAttribute('aria-expanded') !== 'true';
+                    groupHeader.setAttribute('aria-expanded', String(expand));
+                    members.style.display = expand ? 'block' : 'none';
+                    const label = groupHeader.querySelector('span');
+                    if (label?.textContent) {
+                        label.textContent = `${expand ? '▾' : '▸'}${label.textContent.slice(1)}`;
+                    }
+                    this.fitHelpColumns(panel, groups);
+                }
+                return;
+            }
             const row = target?.closest('.exo-help-row');
             if (row instanceof HTMLElement) {
                 const kb = rowBindings.get(row);

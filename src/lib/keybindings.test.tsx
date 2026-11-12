@@ -819,6 +819,89 @@ describe('when guards, silent bindings, and interactive help', () => {
         expect(document.body.textContent).not.toContain('Keyboard Shortcuts');
     });
 
+    describe('help groups', () => {
+        const registerViews = (handlers: Array<() => void>, when?: () => boolean) =>
+            handlers.forEach((handler, i) =>
+                registry.register({
+                    sequence: ['g', String(i + 1)],
+                    description: `Show view ${i + 1}`,
+                    helpGroup: 'Show view N',
+                    handler,
+                    when,
+                    context: 'Panel',
+                }),
+            );
+        const header = () => document.querySelector<HTMLElement>('.exo-help-group')!;
+        const visibleRowTexts = () =>
+            Array.from(document.querySelectorAll<HTMLElement>('.exo-help-row'))
+                .filter((row) => (row.parentElement as HTMLElement).style.display !== 'none')
+                .map((row) => row.textContent ?? '');
+        const click = (element: HTMLElement) =>
+            element.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+
+        it('collapse into one row naming the group and its first … last keys', () => {
+            registry.register({key: 'z', description: 'Zap', handler: vi.fn(), context: 'Panel'});
+            registerViews([vi.fn(), vi.fn(), vi.fn()]);
+            registry.showHelp();
+
+            expect(document.querySelectorAll('.exo-help-group')).toHaveLength(1);
+            expect(header().textContent).toContain('▸ Show view N');
+            expect(header().querySelector('kbd')?.textContent).toMatch(/^g.*1 … g.*3$/);
+            expect(header().getAttribute('aria-expanded')).toBe('false');
+            expect(visibleRowTexts().some((text) => text.includes('Show view 1'))).toBe(false);
+            expect(visibleRowTexts().some((text) => text.includes('Zap'))).toBe(true);
+        });
+
+        it('a click expands the group in place, a second click collapses it', async () => {
+            registerViews([vi.fn(), vi.fn(), vi.fn()]);
+            registry.showHelp();
+
+            click(header());
+            await flushFrames();
+            expect(document.body.textContent).toContain('Keyboard Shortcuts');
+            expect(header().getAttribute('aria-expanded')).toBe('true');
+            expect(header().textContent).toContain('▾ Show view N');
+            const expanded = visibleRowTexts();
+            for (const n of [1, 2, 3]) {
+                expect(expanded.some((text) => text.includes(`Show view ${n}`))).toBe(true);
+            }
+
+            click(header());
+            expect(header().getAttribute('aria-expanded')).toBe('false');
+            expect(visibleRowTexts().some((text) => text.includes('Show view'))).toBe(false);
+        });
+
+        it('an expanded member row invokes its binding and closes the overlay', async () => {
+            const handlers = [vi.fn(), vi.fn(), vi.fn()];
+            registerViews(handlers);
+            registry.showHelp();
+            click(header());
+
+            click(findHelpRow('Show view 2'));
+            await flushFrames();
+
+            expect(handlers[1]).toHaveBeenCalledOnce();
+            expect(handlers[0]).not.toHaveBeenCalled();
+            expect(document.body.textContent).not.toContain('Keyboard Shortcuts');
+        });
+
+        it('expands while every member is guarded off; the members stay inert', async () => {
+            const handlers = [vi.fn(), vi.fn()];
+            registerViews(handlers, () => false);
+            registry.showHelp();
+
+            header().dispatchEvent(new Event('mouseenter'));
+            expect(header().style.cursor).toBe('pointer');
+            click(header());
+            expect(header().getAttribute('aria-expanded')).toBe('true');
+
+            click(findHelpRow('Show view 1'));
+            await flushFrames();
+            expect(handlers[0]).not.toHaveBeenCalled();
+            expect(document.body.textContent).toContain('Keyboard Shortcuts');
+        });
+    });
+
     it('hovering a help row highlights it', () => {
         registry.register({key: 'z', description: 'Zap the page', handler: vi.fn()});
         registry.showHelp();

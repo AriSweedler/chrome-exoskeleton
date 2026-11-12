@@ -13,6 +13,7 @@
 - **Guards**: a `when` predicate makes a binding transparent until it applies
 - **Pass-through**: Ctrl+V hands the next keystroke to the page untouched
 - **Silent bindings**: `silent: true` skips the keystroke announcement (for keys held under auto-repeat)
+- **Help groups**: bindings of one context sharing a `helpGroup` show in the help overlay as one row (`g 1 … g 9`) that a click expands into the members' own clickable rows
 - **Tagged banners**: every banner the registry shows carries a tag under `keystroke`, so a host can mute them as a family (see below)
 
 ## Basic Usage
@@ -76,6 +77,7 @@ interface Keybinding {
   context?: string;               // Optional grouping (e.g., "GitHub", "Docs")
   when?: () => boolean;           // Optional guard: while false the key falls through to the page
   silent?: boolean;               // Skip the "exo keystroke" announcement
+  helpGroup?: string;             // Collapse with same-named bindings into one expandable help row
 }
 ```
 
