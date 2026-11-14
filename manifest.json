@@ -36,7 +36,8 @@
         "tabs",
         "notifications",
         "scripting",
-        "alarms"
+        "alarms",
+        "nativeMessaging"
     ],
     "host_permissions": [
         "<all_urls>"

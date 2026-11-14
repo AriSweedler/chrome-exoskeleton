@@ -38,6 +38,28 @@ machine would get. `EXO_DIST=dist-personal npx playwright test` drives it.
 `exo check --e2e` builds into `dist-e2e/` for the same reason in reverse: the
 suite's build must not reload the extension loaded from `dist/`.
 
+## Installed version
+
+The stamp also records the git sha (and whether tracked files were dirty)
+and every mounted plugin with its tier. When Chrome starts, and when the
+extension is installed or reloads for a build, the service worker sends that
+with the manifest version, its extension ID and Chrome's full version to the
+native messaging host `com.sweedler.chrome_exoskeleton`
+(`src/lib/service-worker/installed-version.ts`). The host,
+`native-host/installed-version-host.mjs`, replaces
+`~/.local/state/chrome-exoskeleton/installed-version` with it (temp file, then
+rename), so the file always describes the build Chrome is running, never the
+one last built.
+
+Chrome finds the host through a manifest in
+`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`, whose
+`allowed_origins` names the extension's ID. `native-host/package.nix` builds
+the host and gives the manifest's shape; the dotfiles' Nix places it. An
+unpacked extension's ID comes from the path it was loaded from, so the
+manifest allows the IDs of `~/.config/chrome-exoskeleton/dist` and
+`dist-personal`. Without the host the extension works as before and logs a
+warning in the worker's console.
+
 ## Editors
 
 Open a plugin through its mount, `src/plugins/<name>/`, and the editor sees

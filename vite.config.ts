@@ -1,15 +1,29 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {defineConfig, type Plugin} from 'vite';
 import react from '@vitejs/plugin-react';
 import {crx} from '@crxjs/vite-plugin';
 import manifest from './manifest.json';
+import {collectBuildStamp} from './src/lib/build-stamp';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const pluginRoots = {
+    df: path.join(here, 'plugins'),
+    ldf: path.join(
+        process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'),
+        'chrome-exoskeleton/plugins',
+    ),
+};
 
 /**
  * Write <outDir>/build-stamp.json after every build (watch rebuilds included).
  * A loaded unpacked extension reads its own files from disk, so the service
  * worker can poll this stamp and reload itself when a new build lands — see
- * src/lib/service-worker/auto-reload.ts.
+ * src/lib/service-worker/auto-reload.ts. The stamp also carries the git sha
+ * and the mounted plugins, which the worker reports as the installed version
+ * (src/lib/build-stamp.ts).
  *
  * Under `vite build --watch` (exo dev) the output directory is never emptied:
  * Chrome may be reading it for the previous build's reload when the next
@@ -39,7 +53,7 @@ function buildStamp(): Plugin {
                     if (!emitted.has(`assets/${file}`)) fs.rmSync(path.join(assets, file));
                 }
             }
-            const stamp = {builtAt: new Date().toISOString()};
+            const stamp = collectBuildStamp(here, pluginRoots, new Date());
             fs.writeFileSync(path.join(outDir, 'build-stamp.json'), JSON.stringify(stamp));
         },
     };
